@@ -1,0 +1,11 @@
+boto3
+python-dotenv
+langchain
+langchain-aws
+langgraph
+langchain-community
+faiss-cpu
+rank-bm25
+fastapi
+uvicorn
+ragas

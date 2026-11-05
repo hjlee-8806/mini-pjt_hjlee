@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+ENV/
+
+# Distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.local
+_backup.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# # 실습 산출물
+# chroma_db/
+# checkpoints.sqlite
+# *.jsonl
+
+# 분석 대상 소스(data/petclinic-legacy/)는 커밋한다. 빌드 산출물(target/)은 그 폴더의 자체 .gitignore 가 제외한다.
+
+# RAG 인덱스·임베딩 캐시 (재생성 가능)
+data/index/
+
+# trace 로그 (요청마다 생성)
+logs/
+
+# 참고용 과제코드 제거
+study_src/

@@ -1,0 +1,136 @@
+{
+  "description": "RAGAS·검색 평가용 정답 목록. 소스를 직접 읽어 확인한 정답 설명(reference)과 정답 위치(reference_locations)를 케이스별로 담는다. 질문은 test_queries.csv 의 같은 id 를 쓴다.",
+  "paths_relative_to": "data/petclinic-legacy",
+  "fields": {
+    "reference": "소스에서 확인한 정답 설명. RAGAS context_recall·context_precision 의 reference 로 쓴다.",
+    "reference_locations": "정답 근거 위치 {path, start, end, anchor, note}. anchor 는 start~end 범위 안에 있어야 하는 문자열이다. (라인이 어긋났는지 검사용)",
+    "decoy_locations": "질문과 비슷해 보이지만 정답이 아닌 위치(주석 속 언급 등). 검색 결과에 섞이면 precision 을 깎는 항목으로 본다."
+  },
+  "excluded_cases": {
+    "5, 11, 14": "도표·전체 개요 질문이라 단일 정답 위치가 없다 (도표 정확도는 규칙 판정으로 본다)",
+    "8, 9, 10": "소스에 없는 것을 묻는 negative 케이스라 정답 위치가 없다",
+    "15, 16, 17": "guardrail 케이스라 검색 정확도 대상이 아니다"
+  },
+  "cases": [
+    {
+      "id": 1,
+      "title": "VetController 엔드포인트와 반환 뷰",
+      "reference": "VetController 는 GET 엔드포인트 3개를 제공한다. GET /vets 는 showVetList 가 model 에 vets 를 담고 'vets/vetList' 뷰를 반환한다(VetController.java:42-49). GET /vets.json 은 showJsonVetList 가 @ResponseBody 로 Vets 객체를 JSON 으로 직접 반환한다(:51-56). GET /vets.xml 은 showXmlVetList 가 @ResponseBody 로 Vets 객체를 XML 로 직접 반환한다(:58-63). 세 메서드는 모두 getVets() 를 통해 clinicService.findVets() 결과를 Vets 에 담는다(:65-71).",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/VetController.java", "start": 42, "end": 49, "anchor": "@GetMapping(\"/vets\")", "note": "/vets → vets/vetList"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/VetController.java", "start": 51, "end": 56, "anchor": "/vets.json", "note": "JSON, @ResponseBody"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/VetController.java", "start": 58, "end": 63, "anchor": "/vets.xml", "note": "XML, @ResponseBody"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/VetController.java", "start": 65, "end": 71, "anchor": "getVets()", "note": "findVets 호출"}
+      ],
+      "decoy_locations": []
+    },
+    {
+      "id": 2,
+      "title": "저장소(repository) 계층 구현 방식",
+      "reference": "repository 계층은 세 가지 방식으로 구현되어 있다. ① JDBC: repository/jdbc 패키지(예: JdbcOwnerRepositoryImpl implements OwnerRepository, JdbcOwnerRepositoryImpl.java:48). ② JPA: repository/jpa 패키지(JpaOwnerRepositoryImpl implements OwnerRepository, :37). ③ Spring Data JPA: repository/springdatajpa 패키지(SpringDataOwnerRepository extends OwnerRepository, :32). 공통 인터페이스는 OwnerRepository, PetRepository, VetRepository, VisitRepository 이다(repository 패키지 바로 아래). 어떤 구현을 쓰는지는 business-config.xml 의 Spring 프로필로 정해진다: 프로필 'jdbc' 는 repository.jdbc 를 component-scan 하고(business-config.xml:66-82, 81행), 'jpa' 는 repository.jpa 를 component-scan 하며(:84-92, 91행), 'spring-data-jpa' 는 jpa:repositories 로 repository.springdatajpa 를 스캔한다(:94-96, 95행).",
+      "reference_locations": [
+        {"path": "src/main/resources/spring/business-config.xml", "start": 66, "end": 82, "anchor": "profile=\"jdbc\"", "note": "jdbc 프로필, component-scan repository.jdbc"},
+        {"path": "src/main/resources/spring/business-config.xml", "start": 84, "end": 92, "anchor": "profile=\"jpa\"", "note": "jpa 프로필, component-scan repository.jpa"},
+        {"path": "src/main/resources/spring/business-config.xml", "start": 94, "end": 96, "anchor": "profile=\"spring-data-jpa\"", "note": "spring-data-jpa 프로필, jpa:repositories"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java", "start": 32, "end": 32, "anchor": "interface OwnerRepository", "note": "공통 인터페이스"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java", "start": 48, "end": 48, "anchor": "class JdbcOwnerRepositoryImpl", "note": "JDBC 구현"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java", "start": 37, "end": 37, "anchor": "class JpaOwnerRepositoryImpl", "note": "JPA 구현"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java", "start": 32, "end": 32, "anchor": "interface SpringDataOwnerRepository", "note": "Spring Data JPA 구현"}
+      ],
+      "decoy_locations": []
+    },
+    {
+      "id": 3,
+      "title": "기본 활성 Spring 프로필과 변경 방법",
+      "reference": "기본 활성 프로필은 jpa 이다. PetclinicInitializer 의 상수 SPRING_PROFILE = \"jpa\"(PetclinicInitializer.java:52)를 createRootApplicationContext 에서 setDefaultProfiles 로 지정한다(:58). 선택 가능한 값은 jpa, jdbc, spring-data-jpa 이고(:44-46), -Dspring.profiles.active=jdbc 같은 VM 옵션으로 기본 jpa 프로필을 바꿀 수 있다고 주석에 적혀 있다(:49-50).",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java", "start": 44, "end": 52, "anchor": "SPRING_PROFILE = \"jpa\"", "note": "프로필 안내 주석과 기본값 상수"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java", "start": 55, "end": 59, "anchor": "setDefaultProfiles", "note": "기본 프로필 적용"}
+      ],
+      "decoy_locations": []
+    },
+    {
+      "id": 4,
+      "title": "OwnerController.processFindForm 동작",
+      "reference": "processFindForm 은 GET /owners 를 처리한다(OwnerController.java:76-99). owner.getLastName() 이 null 이면 빈 문자열로 바꿔 전체를 검색 대상으로 만들고(:80-82), clinicService.findOwnerByLastName 으로 조회한다(:85). 결과가 0건이면 lastName 필드에 notFound 오류를 걸고 'owners/findOwners' 뷰를 반환한다(:86-89). 1건이면 'redirect:/owners/{id}' 로 리다이렉트한다(:90-93). 여러 건이면 model 에 'selections' 를 담아 'owners/ownersList' 뷰를 반환한다(:94-97).",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java", "start": 76, "end": 99, "anchor": "processFindForm", "note": "전체 메서드"}
+      ],
+      "decoy_locations": []
+    },
+    {
+      "id": 6,
+      "title": "ClinicService.findVets 캐시 적용 여부",
+      "reference": "ClinicService.findVets 는 캐시가 적용되어 있다. 구현체 ClinicServiceImpl.findVets 에 @Cacheable(value = \"vets\") 와 @Transactional(readOnly = true) 가 붙어 있다(ClinicServiceImpl.java:98-103). 캐싱은 tools-config.xml 의 <cache:annotation-driven/> 으로 활성화되고(:38), 캐시 매니저는 CaffeineCacheManager 이며 'default', 'vets' 두 캐시 이름이 등록되어 있다(:40-47). 소스 전체에서 @Cacheable 이 쓰인 곳은 findVets 하나뿐이다.",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java", "start": 98, "end": 103, "anchor": "@Cacheable(value = \"vets\")", "note": "findVets 캐시"},
+        {"path": "src/main/resources/spring/tools-config.xml", "start": 37, "end": 47, "anchor": "CaffeineCacheManager", "note": "캐시 활성화와 캐시 매니저"}
+      ],
+      "decoy_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java", "start": 35, "end": 35, "anchor": "@Cacheable", "note": "클래스 Javadoc 속 언급일 뿐"}
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Pet.birthDate 변경 영향도",
+      "reference": "Pet 의 birthDate 를 바꾸면 계층별로 다음이 영향받는다. model: Pet.java 의 필드와 JPA 매핑(@Column name=\"birth_date\", :48-50), setBirthDate(:64-65), getBirthDate(:68-69). web: PetValidator.java:53-54 가 birthDate 필수 검증을 한다. repository(JDBC): JdbcPetRowMapper.java:35 가 birth_date 를 읽어 setBirthDate 로 채우고, JdbcPetRepositoryImpl.java 의 UPDATE(:97)와 파라미터 바인딩(:112)이 birth_date 를 쓰며, JdbcOwnerRepositoryImpl.java:108 과 JdbcVisitRepositoryImpl.java:81 의 SELECT 가 pets.birth_date 컬럼을 읽는다. view(JSP): ownerDetails.jsp:54, createOrUpdatePetForm.jsp:12·30, createOrUpdateVisitForm.jsp:31. db: schema.sql 의 pets.birth_date 컬럼(hsqldb:49, h2:49, mysql:47, postgresql:62).",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/model/Pet.java", "start": 48, "end": 50, "anchor": "birth_date", "note": "컬럼 매핑과 필드"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/model/Pet.java", "start": 64, "end": 69, "anchor": "getBirthDate", "note": "setter, getter"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/PetValidator.java", "start": 53, "end": 54, "anchor": "birthDate", "note": "필수 검증"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRowMapper.java", "start": 35, "end": 35, "anchor": "birth_date", "note": "ResultSet 매핑"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java", "start": 97, "end": 97, "anchor": "birth_date", "note": "UPDATE"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java", "start": 112, "end": 112, "anchor": "birth_date", "note": "파라미터 바인딩"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java", "start": 108, "end": 108, "anchor": "birth_date", "note": "SELECT"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java", "start": 81, "end": 81, "anchor": "birth_date", "note": "SELECT"},
+        {"path": "src/main/webapp/WEB-INF/jsp/owners/ownerDetails.jsp", "start": 54, "end": 54, "anchor": "birthDate", "note": "화면 출력"},
+        {"path": "src/main/webapp/WEB-INF/jsp/pets/createOrUpdatePetForm.jsp", "start": 12, "end": 12, "anchor": "birthDate", "note": "datepicker"},
+        {"path": "src/main/webapp/WEB-INF/jsp/pets/createOrUpdatePetForm.jsp", "start": 30, "end": 30, "anchor": "birthDate", "note": "입력 필드"},
+        {"path": "src/main/webapp/WEB-INF/jsp/pets/createOrUpdateVisitForm.jsp", "start": 31, "end": 31, "anchor": "birthDate", "note": "화면 출력"},
+        {"path": "src/main/resources/db/hsqldb/schema.sql", "start": 49, "end": 49, "anchor": "birth_date", "note": "pets 컬럼"},
+        {"path": "src/main/resources/db/h2/schema.sql", "start": 49, "end": 49, "anchor": "birth_date", "note": "pets 컬럼"},
+        {"path": "src/main/resources/db/mysql/schema.sql", "start": 47, "end": 47, "anchor": "birth_date", "note": "pets 컬럼"},
+        {"path": "src/main/resources/db/postgresql/schema.sql", "start": 62, "end": 62, "anchor": "birth_date", "note": "pets 컬럼"}
+      ],
+      "decoy_locations": []
+    },
+    {
+      "id": 12,
+      "title": "save 메서드 (동명 메서드 다수)",
+      "reference": "save 라는 이름의 메서드는 여러 곳에 있고 대상 엔티티와 계층이 다르다. 서비스 계층 ClinicService 에는 savePet(ClinicService.java:40), saveVisit(:42), saveOwner(:46) 선언이 있고, ClinicServiceImpl 이 각각 @Transactional 로 해당 repository 의 save 를 호출한다(saveOwner :72-76, saveVisit :79-83, savePet :92-96). repository 계층에는 OwnerRepository.save(:60), PetRepository.save(:57), VisitRepository.save(:40) 인터페이스 선언이 있고, JDBC 구현(JdbcOwnerRepositoryImpl.java:122, JdbcPetRepositoryImpl.java:88, JdbcVisitRepositoryImpl.java:56)과 JPA 구현(JpaOwnerRepositoryImpl.java:72, JpaPetRepositoryImpl.java:57, JpaVisitRepositoryImpl.java:48)이 있다. saveVet 은 존재하지 않는다.",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicService.java", "start": 40, "end": 46, "anchor": "saveOwner", "note": "savePet, saveVisit, saveOwner 선언"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java", "start": 72, "end": 76, "anchor": "saveOwner", "note": "saveOwner 구현"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java", "start": 79, "end": 83, "anchor": "saveVisit", "note": "saveVisit 구현"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java", "start": 92, "end": 96, "anchor": "savePet", "note": "savePet 구현"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java", "start": 60, "end": 60, "anchor": "void save(Owner owner)", "note": "인터페이스"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java", "start": 57, "end": 57, "anchor": "void save(Pet pet)", "note": "인터페이스"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java", "start": 40, "end": 40, "anchor": "void save(Visit visit)", "note": "인터페이스"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java", "start": 122, "end": 122, "anchor": "void save(Owner owner)", "note": "JDBC"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java", "start": 88, "end": 88, "anchor": "void save(Pet pet)", "note": "JDBC"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java", "start": 56, "end": 56, "anchor": "void save(Visit visit)", "note": "JDBC"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java", "start": 72, "end": 72, "anchor": "void save(Owner owner)", "note": "JPA"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java", "start": 57, "end": 57, "anchor": "void save(Pet pet)", "note": "JPA"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java", "start": 48, "end": 48, "anchor": "void save(Visit visit)", "note": "JPA"}
+      ],
+      "decoy_locations": []
+    },
+    {
+      "id": 13,
+      "title": "ClinicService 사용처",
+      "reference": "ClinicService 를 생성자 주입으로 사용하는 곳은 web 계층의 5개 클래스이다: OwnerController(OwnerController.java:42-46), PetController(PetController.java:43-47), VetController(VetController.java:36-40), VisitController(VisitController.java:39-43), PetTypeFormatter(PetTypeFormatter.java:43-47). 구현체는 ClinicServiceImpl 이다(ClinicServiceImpl.java:40, implements ClinicService). JdbcVetRepositoryImpl.java:54 와 JpaVisitRepositoryImpl.java:28 의 ClinicService 언급은 주석일 뿐 실제 의존이 아니며, repository 계층은 ClinicService 를 사용하지 않는다.",
+      "reference_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java", "start": 42, "end": 46, "anchor": "ClinicService clinicService", "note": "생성자 주입"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/PetController.java", "start": 43, "end": 47, "anchor": "ClinicService clinicService", "note": "생성자 주입"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/VetController.java", "start": 36, "end": 40, "anchor": "ClinicService clinicService", "note": "생성자 주입"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/VisitController.java", "start": 39, "end": 43, "anchor": "ClinicService clinicService", "note": "생성자 주입"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/web/PetTypeFormatter.java", "start": 43, "end": 47, "anchor": "ClinicService clinicService", "note": "생성자 주입"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java", "start": 40, "end": 40, "anchor": "implements ClinicService", "note": "구현체"}
+      ],
+      "decoy_locations": [
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVetRepositoryImpl.java", "start": 54, "end": 54, "anchor": "ClinicService", "note": "주석 속 언급"},
+        {"path": "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java", "start": 28, "end": 28, "anchor": "ClinicService", "note": "주석 속 언급"}
+      ]
+    }
+  ]
+}

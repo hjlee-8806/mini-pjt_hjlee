@@ -1,0 +1,395 @@
+{
+  "tag": "6fix",
+  "ts": "2026-11-05T14:04:08+09:00",
+  "model": "us.anthropic.claude-sonnet-4-6",
+  "region": "us-east-1",
+  "cases": [
+    {
+      "id": 1,
+      "title": "VetController 엔드포인트와 반환 뷰",
+      "question": "VetController 가 제공하는 엔드포인트와 각각의 반환 뷰를 알려줘",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 9682,
+      "steps": [
+        "extract_features",
+        "search_code",
+        "read_file"
+      ],
+      "context_ids": [
+        "extract_features#1",
+        "src/main/java/org/springframework/samples/petclinic/web/VetController.java:38-40",
+        "src/main/java/org/springframework/samples/petclinic/web/VetController.java:16-36",
+        "src/main/java/org/springframework/samples/petclinic/web/VetController.java:42-49",
+        "src/main/java/org/springframework/samples/petclinic/web/PetController.java:45-47",
+        "src/main/java/org/springframework/samples/petclinic/web/VetController.java:65-73",
+        "read_file#7"
+      ],
+      "retrieval": {
+        "search_recall": 0.5,
+        "evidence_recall": 1.0,
+        "search_precision": 0.4,
+        "reference_total": 4,
+        "covered_by_search": 2,
+        "covered_by_evidence": 4,
+        "search_chunks": 5,
+        "relevant_chunks": 2,
+        "missed": [],
+        "missed_by_search_only": [
+          "VetController.java:51-56",
+          "VetController.java:58-63"
+        ],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 5,
+          "read_file": 1,
+          "find_usages": 0,
+          "extract_features": 3
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "저장소(repository) 계층 구현 방식",
+      "question": "저장소(repository) 계층은 어떤 구현 방식들로 되어 있어?",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 15056,
+      "steps": [
+        "list_structure",
+        "search_code",
+        "read_file",
+        "search_code"
+      ],
+      "context_ids": [
+        "list_structure#1",
+        "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java:16-39",
+        "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVetRepositoryImpl.java:16-37",
+        "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java:16-39",
+        "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java:16-41",
+        "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java:16-52",
+        "read_file#7",
+        "src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java:16-52",
+        "src/main/resources/spring/business-config.xml:1-60",
+        "src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java:16-32",
+        "src/main/resources/spring/business-config.xml:58-97",
+        "src/main/resources/spring/datasource-config.xml:1-43"
+      ],
+      "retrieval": {
+        "search_recall": 0.857,
+        "evidence_recall": 0.857,
+        "search_precision": 0.4,
+        "reference_total": 7,
+        "covered_by_search": 6,
+        "covered_by_evidence": 6,
+        "search_chunks": 10,
+        "relevant_chunks": 4,
+        "missed": [
+          "OwnerRepository.java:32"
+        ],
+        "missed_by_search_only": [],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 10,
+          "read_file": 1,
+          "find_usages": 0,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "기본 활성 Spring 프로필과 변경 방법",
+      "question": "이 시스템에서 기본으로 활성화되는 Spring 프로필은 뭐고, 바꾸려면 어떻게 해?",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 12567,
+      "steps": [
+        "search_code",
+        "search_code",
+        "read_file",
+        "read_file"
+      ],
+      "context_ids": [
+        "src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java:16-52",
+        "src/main/resources/spring/business-config.xml:1-60",
+        "src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java:54-60",
+        "src/main/resources/spring/datasource-config.xml:1-43",
+        "src/main/resources/spring/mvc-view-config.xml:1-40",
+        "src/main/java/org/springframework/samples/petclinic/PetclinicInitializer.java:16-52",
+        "src/main/resources/spring/business-config.xml:1-60",
+        "src/main/java/org/springframework/samples/petclinic/web/PetTypeFormatter.java:16-43",
+        "src/main/resources/spring/tools-config.xml:1-49",
+        "src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java:38-41",
+        "read_file#11",
+        "read_file#12"
+      ],
+      "retrieval": {
+        "search_recall": 1.0,
+        "evidence_recall": 1.0,
+        "search_precision": 0.25,
+        "reference_total": 2,
+        "covered_by_search": 2,
+        "covered_by_evidence": 2,
+        "search_chunks": 8,
+        "relevant_chunks": 2,
+        "missed": [],
+        "missed_by_search_only": [],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 8,
+          "read_file": 2,
+          "find_usages": 0,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "OwnerController.processFindForm 동작",
+      "question": "OwnerController 의 processFindForm 메서드는 무슨 일을 해?",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 8769,
+      "steps": [
+        "search_code"
+      ],
+      "context_ids": [
+        "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java:76-99",
+        "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java:70-74",
+        "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java:60-68",
+        "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java:108-117",
+        "src/main/java/org/springframework/samples/petclinic/web/OwnerController.java:101-106"
+      ],
+      "retrieval": {
+        "search_recall": 1.0,
+        "evidence_recall": 1.0,
+        "search_precision": 0.2,
+        "reference_total": 1,
+        "covered_by_search": 1,
+        "covered_by_evidence": 1,
+        "search_chunks": 5,
+        "relevant_chunks": 1,
+        "missed": [],
+        "missed_by_search_only": [],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 5,
+          "read_file": 0,
+          "find_usages": 0,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "ClinicService.findVets 캐시 적용 여부",
+      "question": "ClinicService 의 findVets 는 캐시가 적용돼 있어?",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 9646,
+      "steps": [
+        "search_code",
+        "search_code"
+      ],
+      "context_ids": [
+        "src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:44-44",
+        "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:98-103",
+        "src/main/java/org/springframework/samples/petclinic/web/VetController.java:65-73",
+        "src/main/java/org/springframework/samples/petclinic/web/VetController.java:16-36",
+        "src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:50-52",
+        "src/main/resources/spring/tools-config.xml:1-49",
+        "src/main/resources/logback.xml:1-22",
+        "src/main/resources/spring/business-config.xml:1-60",
+        "src/main/resources/spring/business-config.xml:58-97",
+        "src/main/resources/spring/datasource-config.xml:1-43"
+      ],
+      "retrieval": {
+        "search_recall": 1.0,
+        "evidence_recall": 1.0,
+        "search_precision": 0.2,
+        "reference_total": 2,
+        "covered_by_search": 2,
+        "covered_by_evidence": 2,
+        "search_chunks": 10,
+        "relevant_chunks": 2,
+        "missed": [],
+        "missed_by_search_only": [],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 10,
+          "read_file": 0,
+          "find_usages": 0,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Pet.birthDate 변경 영향도",
+      "question": "Pet 의 birthDate 필드를 바꾸면 어디가 영향받아?",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 12435,
+      "steps": [
+        "find_usages",
+        "build_dependency_graph"
+      ],
+      "context_ids": [
+        "find_usages#1",
+        "build_dependency_graph#2"
+      ],
+      "retrieval": {
+        "search_recall": 0.0,
+        "evidence_recall": 1.0,
+        "search_precision": null,
+        "reference_total": 16,
+        "covered_by_search": 0,
+        "covered_by_evidence": 16,
+        "search_chunks": 0,
+        "relevant_chunks": 0,
+        "missed": [],
+        "missed_by_search_only": [
+          "Pet.java:48-50",
+          "Pet.java:64-69",
+          "PetValidator.java:53-54",
+          "JdbcPetRowMapper.java:35",
+          "JdbcPetRepositoryImpl.java:97",
+          "JdbcPetRepositoryImpl.java:112",
+          "JdbcOwnerRepositoryImpl.java:108",
+          "JdbcVisitRepositoryImpl.java:81",
+          "ownerDetails.jsp:54",
+          "createOrUpdatePetForm.jsp:12",
+          "createOrUpdatePetForm.jsp:30",
+          "createOrUpdateVisitForm.jsp:31",
+          "schema.sql:49",
+          "schema.sql:49",
+          "schema.sql:47",
+          "schema.sql:62"
+        ],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 0,
+          "read_file": 0,
+          "find_usages": 21,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 12,
+      "title": "save 메서드 (동명 메서드 다수)",
+      "question": "save 메서드는 뭐 하는 거야?",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 14256,
+      "steps": [
+        "search_code",
+        "find_usages",
+        "read_file",
+        "read_file",
+        "read_file",
+        "read_file"
+      ],
+      "context_ids": [
+        "src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java:34-40",
+        "src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:51-59",
+        "src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:54-63",
+        "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java:56-65",
+        "src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java:47-54",
+        "src/main/java/org/springframework/samples/petclinic/web/VisitController.java:74-83",
+        "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:79-83",
+        "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:92-96",
+        "src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java:55-58",
+        "src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:72-76",
+        "find_usages#11",
+        "read_file#12",
+        "read_file#13",
+        "read_file#14",
+        "read_file#15"
+      ],
+      "retrieval": {
+        "search_recall": 0.692,
+        "evidence_recall": 0.923,
+        "search_precision": 0.9,
+        "reference_total": 13,
+        "covered_by_search": 9,
+        "covered_by_evidence": 12,
+        "search_chunks": 10,
+        "relevant_chunks": 9,
+        "missed": [
+          "ClinicService.java:40-46"
+        ],
+        "missed_by_search_only": [
+          "JdbcOwnerRepositoryImpl.java:122",
+          "JdbcPetRepositoryImpl.java:88",
+          "JpaOwnerRepositoryImpl.java:72"
+        ],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 10,
+          "read_file": 4,
+          "find_usages": 15,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    },
+    {
+      "id": 13,
+      "title": "ClinicService 사용처",
+      "question": "ClinicService 를 사용하는 곳을 모두 알려줘",
+      "status": "OK",
+      "error": null,
+      "latency_ms": 7163,
+      "steps": [
+        "find_usages"
+      ],
+      "context_ids": [
+        "find_usages#1"
+      ],
+      "retrieval": {
+        "search_recall": 0.0,
+        "evidence_recall": 1.0,
+        "search_precision": null,
+        "reference_total": 6,
+        "covered_by_search": 0,
+        "covered_by_evidence": 6,
+        "search_chunks": 0,
+        "relevant_chunks": 0,
+        "missed": [],
+        "missed_by_search_only": [
+          "OwnerController.java:42-46",
+          "PetController.java:43-47",
+          "VetController.java:36-40",
+          "VisitController.java:39-43",
+          "PetTypeFormatter.java:43-47",
+          "ClinicServiceImpl.java:40"
+        ],
+        "decoy_hits": [],
+        "sources": {
+          "search_code": 0,
+          "read_file": 0,
+          "find_usages": 19,
+          "extract_features": 0
+        },
+        "truncated_outputs": []
+      }
+    }
+  ],
+  "summary": {
+    "cases": 8,
+    "search_recall": 0.631,
+    "evidence_recall": 0.973,
+    "search_precision": 0.392,
+    "decoy_hits_total": 0,
+    "target": 0.7,
+    "target_met": true
+  }
+}
