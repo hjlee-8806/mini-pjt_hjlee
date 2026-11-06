@@ -16,6 +16,7 @@ LangChain AgentMiddleware 세 개로 에이전트에 결합한다. (agent.py 의
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unicodedata
@@ -25,6 +26,7 @@ from dotenv import load_dotenv
 from langchain.agents.middleware import AgentMiddleware, hook_config
 from langchain_core.messages import AIMessage, HumanMessage
 
+from src.settings import TARGET_NAME
 from src.tools import parse_project, validate_diagram
 
 load_dotenv()
@@ -37,7 +39,7 @@ MAX_DIAGRAM_RETRIES = 2       # 도표 검증 실패 시 모델에 되돌려 수
 MIN_METHOD_NAME_LEN = 4       # 범위 분류 단축 경로: 이 길이 이상 + camelCase 인 메서드명만 '코드에 있는 이름'으로 본다
 
 SCOPE_PROMPT = (
-    "당신은 질의 분류기입니다. 이 서비스는 Java/Spring 'PetClinic' 소스 코드(컨트롤러·서비스·저장소·모델·"
+    "당신은 질의 분류기입니다. 이 서비스는 Java/Spring '{target}' 소스 코드(컨트롤러·서비스·저장소·모델·"
     "XML 설정·JSP·SQL)의 구조·기능·영향도·도표를 분석합니다.\n"
     "아래 질의가 이 소스 분석과 관련 있으면 IN, 일반 상식·잡담·다른 프로젝트·코드와 무관한 질문이면 OUT 만 출력하세요.\n"
     "소스에 없을 수도 있는 기능(예: 결제, 로그인)을 묻는 것, 범위가 넓거나 모호한 질문, 후속 질문은 IN 입니다.\n"
@@ -47,10 +49,10 @@ SCOPE_PROMPT = (
 
 BLOCK_MESSAGES = {
     "injection": "요청에 시스템 지시를 바꾸거나 내부 정보를 요구하는 내용이 있어 처리할 수 없습니다. "
-                 "분석 대상 소스(PetClinic)의 구조·기능·영향도에 대해 질문해 주세요.",
-    "path": "분석 대상 소스(data/petclinic-legacy/) 밖의 파일이나 비밀 정보는 접근할 수 없습니다. "
+                 f"분석 대상 소스({TARGET_NAME})의 구조·기능·영향도에 대해 질문해 주세요.",
+    "path": f"분석 대상 소스({TARGET_NAME}) 폴더 밖의 파일이나 비밀 정보는 접근할 수 없습니다. "
             "대신 대상 소스의 구조·기능·영향도는 분석해 드릴 수 있습니다.",
-    "scope": "분석 대상 소스(PetClinic)와 관련 없는 질문이라 답할 수 없습니다. "
+    "scope": f"분석 대상 소스({TARGET_NAME})와 관련 없는 질문이라 답할 수 없습니다. "
              "소스의 구조, 업무 기능, 메서드 동작, 변경 영향도를 질문해 주세요.",
 }
 
@@ -158,7 +160,7 @@ def classify_scope(query: str) -> bool:
     try:
         from langchain_aws import ChatBedrockConverse
         llm = ChatBedrockConverse(model=GUARD_MODEL_ID, temperature=0, max_tokens=5)
-        out = llm.invoke(SCOPE_PROMPT.format(query=query[:1000])).content
+        out = llm.invoke(SCOPE_PROMPT.format(target=TARGET_NAME, query=query[:1000])).content
         text = out if isinstance(out, str) else "".join(b.get("text", "") for b in out if isinstance(b, dict))
         return not text.strip().upper().startswith("OUT")
     except Exception:
@@ -271,31 +273,130 @@ def _describe(result: dict) -> str:
     return "; ".join(parts)
 
 
-def _diagram_retries(messages) -> int:
-    """이번 요청(마지막 실제 사용자 메시지 이후)에서 도표 수정을 요구한 횟수."""
+_FEEDBACK_KEYS = ("diagram_check", "list_check")   # 검사 미들웨어가 되돌려 보낸 HumanMessage 의 표식
+
+
+def _retries(messages, key: str) -> int:
+    """이번 요청(마지막 실제 사용자 메시지 이후)에서 key 검사가 수정을 요구한 횟수."""
     n = 0
     for m in reversed(messages):
         if isinstance(m, HumanMessage):
-            if m.additional_kwargs.get("diagram_check"):
+            if m.additional_kwargs.get(key):
                 n += 1
-            else:
+            elif not any(m.additional_kwargs.get(k) for k in _FEEDBACK_KEYS):
                 break
     return n
 
 
+def _diagram_retries(messages) -> int:
+    """이번 요청에서 도표 수정을 요구한 횟수."""
+    return _retries(messages, "diagram_check")
+
+
+# ---------------------------------------------------------------- 메서드 목록 완전성 검사
+# 프롬프트의 "메서드가 15개 이하이면 전부 나열" 규칙을 코드로 보장한다. 모델은 질문과 관련 있어 보이는 것만 추려 쓰려는
+# 경향이 있어, 프롬프트 지시만으로는 문구에 따라 지켜지다 말다 한다. (TASK.md 9-3 케이스 10 분석)
+MAX_LIST_RETRIES = 1          # 누락 목록을 알려 주고 다시 쓰게 하는 최대 횟수. 그래도 빠지면 답 끝에 누락 목록을 덧붙인다
+MAX_LISTED_METHODS = 15       # 이 개수 이하일 때만 '전부 나열'을 요구한다 (SYSTEM_PROMPT 와 같은 값)
+MAX_LISTED_CLASSES = 2        # list_structure 결과가 이 개수 이하의 클래스일 때만 검사 (인터페이스+구현체 정도). 계층 전체 조회는 제외
+_NOT_FOUND_RE = re.compile(r"존재하지\s*않|찾을\s*수\s*없")   # '없는 대상을 물은 질문'에 대한 답에만 적용한다
+
+
+def _turn_tool_outputs(messages, tool_name: str):
+    """이번 요청(마지막 실제 사용자 메시지 이후)의 tool_name 도구 결과를 JSON 으로 읽어 돌려준다."""
+    out = []
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage) and not any(m.additional_kwargs.get(k) for k in _FEEDBACK_KEYS):
+            break
+        if getattr(m, "type", "") == "tool" and getattr(m, "name", "") == tool_name:
+            try:
+                out.append(json.loads(_text_of_content(m.content)))
+            except ValueError:
+                continue
+    return out
+
+
+def _turn_read_java_paths(messages) -> list[str]:
+    """이번 요청에서 모델이 read_file 로 읽은 자바 파일 경로."""
+    paths = []
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage) and not any(m.additional_kwargs.get(k) for k in _FEEDBACK_KEYS):
+            break
+        for call in getattr(m, "tool_calls", None) or []:
+            p = str((call.get("args") or {}).get("path", "")).replace("\\", "/")
+            if call.get("name") == "read_file" and p.endswith(".java"):
+                paths.append(p)
+    return paths
+
+
+def _examined_classes(messages) -> list[list[dict]]:
+    """모델이 이번 요청에서 직접 확인한 클래스 묶음. list_structure 결과(1~MAX_LISTED_CLASSES 개짜리) 하나가 한 묶음이고,
+    read_file 로 읽은 자바 파일의 클래스는 파일마다 한 묶음이다. (모델이 list_structure 가 빈 결과일 때 파일을 직접 읽는 경로가 있다)"""
+    groups = [d for d in _turn_tool_outputs(messages, "list_structure")
+              if isinstance(d, list) and 1 <= len(d) <= MAX_LISTED_CLASSES]
+    paths = _turn_read_java_paths(messages)
+    if paths:
+        by_file: dict[str, list[dict]] = {}
+        for c in parse_project().values():
+            by_file.setdefault(c["file"], []).append(c)
+        for p in dict.fromkeys(paths):
+            hit = next((cs for f, cs in by_file.items() if p == f or p.endswith("/" + f) or f.endswith("/" + p)), None)
+            if hit:
+                groups.append(hit)
+    return groups
+
+
+def check_method_listing(messages, answer: str) -> dict | None:
+    """'존재하지 않음' 답변이 모델이 확인한 클래스(list_structure 결과 또는 read_file 로 읽은 자바 파일)의 메서드를
+    빠뜨렸는지 검사한다. 답변에 이름이 나온 클래스의 메서드가 MAX_LISTED_METHODS 개 이하인데 답에 없는 이름이 있으면
+    {이름: 파일:라인} 을 돌려준다. 해당 없으면 None."""
+    if not _NOT_FOUND_RE.search(answer):
+        return None
+    mentioned = lambda name: bool(re.search(rf"(?<!\w){re.escape(name)}(?!\w)", answer))  # noqa: E731
+    missing: dict[str, str] = {}
+    for group in _examined_classes(messages):
+        methods: dict[str, str] = {}
+        for c in group:
+            if isinstance(c, dict) and mentioned(str(c.get("name"))):
+                for mt in c.get("methods", []):
+                    methods.setdefault(mt["name"], f'{c["file"].rsplit("/", 1)[-1]}:{mt["line"]}')
+        if not methods or len(methods) > MAX_LISTED_METHODS:
+            continue
+        missing.update({n: loc for n, loc in methods.items() if not mentioned(n)})
+    return missing or None
+
+
 class OutputCheckMiddleware(AgentMiddleware):
-    """모델이 도구 호출 없이 최종 답을 낼 때, 답 속 Mermaid 도표를 코드로 검증한다."""
+    """모델이 도구 호출 없이 최종 답을 낼 때, 답 속 Mermaid 도표와 메서드 목록 완전성을 코드로 검증한다."""
+
+    def _check_listing(self, state, last):
+        """도표가 없는 답에 대한 메서드 목록 검사. 누락이 있으면 한 번 되돌리고, 그래도 빠지면 누락 목록을 덧붙인다."""
+        text = _text_of_content(last.content)
+        missing = check_method_listing(state["messages"][:-1], text)
+        if not missing:
+            return None
+        desc = ", ".join(f"{n}({loc})" for n, loc in missing.items())
+        if _retries(state["messages"][:-1], "list_check") < MAX_LIST_RETRIES:
+            feedback = HumanMessage(
+                content=f"[목록 완전성 검사] list_structure 로 확인한 메서드 중 답변에 없는 것: {desc}. "
+                        f"메서드가 {MAX_LISTED_METHODS}개 이하이므로 질문과 관련 없어 보여도 빠짐없이 전부 파일:라인과 함께 나열해 다시 답하세요.",
+                additional_kwargs={"list_check": {"ok": False, "missing": sorted(missing)}})
+            return {"messages": [feedback], "jump_to": "model"}
+        kw = {**last.additional_kwargs, "list_check": {"ok": False, "missing": sorted(missing), "exhausted": True}}
+        note = f"\n\n> ⚠ 답변에서 빠진 메서드 (list_structure 결과): {desc}"
+        return {"messages": [last.model_copy(update={"content": text + note, "additional_kwargs": kw})]}
 
     @hook_config(can_jump_to=["model"])
     def after_model(self, state, runtime):
         """통과: 검증 결과를 메시지에 기록. 실패: 수정 요구 후 model 로 점프(최대 MAX_DIAGRAM_RETRIES 회).
-        한도 초과: 답 끝에 '검증 불가 항목'을 덧붙인다. (같은 id 로 교체하므로 add_messages 가 덮어쓴다)"""
+        한도 초과: 답 끝에 '검증 불가 항목'을 덧붙인다. (같은 id 로 교체하므로 add_messages 가 덮어쓴다)
+        도표가 없는 답에는 메서드 목록 완전성 검사를 한다."""
         last = state["messages"][-1]
         if not isinstance(last, AIMessage) or last.tool_calls:
             return None
         result = check_diagrams(_text_of_content(last.content))
         if result is None:
-            return None
+            return self._check_listing(state, last)
         if result["ok"]:
             kw = {**last.additional_kwargs, "diagram_check": {"ok": True, "count": result["count"]}}
             return {"messages": [last.model_copy(update={"additional_kwargs": kw})]}

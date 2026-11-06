@@ -1,23 +1,23 @@
 # 미니 PJT: 시스템 소스분석 에이전트
 
 ## 무엇을 푸나
-문서가 부족한 Java/Spring 소스를 인수받은 개발자가, 아키텍처 도표·업무 기능 목록·파일/메서드 설명을 근거 코드 위치와 함께 질의응답으로 얻게 한다. (분석 대상 샘플: `data/petclinic-legacy/`, 자세한 서비스 스펙은 [SERVICE.md](SERVICE.md))
+문서가 부족한 Java/Spring 소스를 인수받은 개발자가, 아키텍처 도표·업무 기능 목록·파일/메서드 설명을 근거 코드 위치와 함께 질의응답으로 얻게 한다. (기본 분석 대상 샘플: `data/petclinic-legacy/`. 환경변수 `TARGET_ROOT` 로 다른 Java/Spring 프로젝트도 분석할 수 있다. 자세한 서비스 스펙은 [SERVICE.md](SERVICE.md))
 
 ## 활용한 패턴 (Day 1~7)
 9개 적용 계획 (6개 이상 적용 목표)을 모두 구현했다. (적용하지 않은 패턴은 아래 "적용 안 함") 설계 근거는 [SERVICE.md](SERVICE.md) 해당 절 참고.
 상태: ✅ 구현 완료 · 🔧 진행 중 · ⬜ 미착수 · ➖ 적용 안 함 (구현 상태는 요청 시에만 갱신)
-코드 위치의 라인 번호는 2026-11-05 기준이며 코드 수정 시 어긋날 수 있다.
+코드 위치의 라인 번호는 2026-11-06 기준(함수 정의 위치를 다시 대조했다)이며 코드 수정 시 어긋날 수 있다.
 
 | 패턴 | Day | 적용 계획 | SERVICE.md | 코드 위치 | 상태 |
 |---|---|---|---|---|---|
-| LCEL chain (Pydantic 구조화 출력) | 1 | 최종 응답을 `{answer, contexts, trace}` Pydantic 모델로 반환 | 3-7 | `src/agent.py` — `Context:107`, `TraceStep:113`, `QueryResponse:120`, `run_query:300`. 응답은 `create_agent` 그래프 결과를 Pydantic 모델로 구성하고 `src/api.py` 의 `response_model` 로 검증한다 (`prompt \| llm` 형태의 LCEL 파이프 체인은 쓰지 않음) | ✅ |
-| RAG (하이브리드 검색·쿼리 확장) | 2 | 메서드·클래스 단위 청킹, 벡터 + BM25, 결과 없을 때 질의 재작성 | 3-1, 3-2 | `src/retriever.py` — `make_chunks:282`, `get_index:329`, `_rrf:365`, `rewrite_query:377`, `search_code:418` / `src/embeddings.py` — `embed_texts:72` (Titan v2, 해시 캐시) | ✅ |
-| ReAct (도구 자율 선택) | 3 | `bind_tools` 로 도구 8개 결합, 질의 유형별 호출 순서 | 3-4 | `src/agent.py` — `build_agent:163` (`create_agent` 로 도구 8개 결합), 질의 유형별 흐름은 `SYSTEM_PROMPT` | ✅ |
-| 도구 다중 | 4 | 검색·파일 조회·구조 추출·의존성 그래프·영향도를 한 질의에서 2~3개 조합 | 3-2, 3-4 | `src/tools.py` — `read_file:161`, `list_structure:171`, `build_dependency_graph:192`, `find_usages:258`, `extract_features:288`, `validate_diagram:368`, `save_doc:406` + `src/retriever.py` 의 `search_code` (에이전트에 8종 결합) | ✅ |
-| 가드레일 (PII·인젝션) | 5 | 경로 제한, 비밀·개인정보 마스킹, 인젝션 방어, 범위 밖 질문 안내 | 4 | `src/guardrails.py` — `check_input:168` (규칙 + Haiku 범위 분류 `classify_scope:156`), `mask_text:185`, `InputGuardMiddleware:210`, `MaskingMiddleware:224` / 경로 제한 `src/tools.py` `_safe_path` | ✅ |
-| HITL (위험 작업 승인) | 5 | `save_doc` 저장 전 `interrupt()` 로 승인·거절·수정 요청 | 3-5 | `src/agent.py` — `save_doc:132` (`approved` 를 숨긴 래퍼), `build_agent:163` 의 `HumanInTheLoopMiddleware`, `_approval_description:138`, `_run_query:320` (승인·거절·수정 요청 해석, 수정 최대 3회) | ✅ |
-| 미들웨어 (요약·마스킹·재시도) | 5 | PII 마스킹, 도표 검증 재시도, 대화 이력 요약 | 3-6, 3-7 | `src/guardrails.py` — `OutputCheckMiddleware:286` (Mermaid 검증·재시도 2회), `MaskingMiddleware:224` / `src/agent.py` — `SummarizationMiddleware` (`build_agent:163`) | ✅ |
-| Observability · Trace | 7 | 모든 도구 호출을 `trace` 에 담고 LangFuse 또는 JSON 로그로 기록 | 3-7, 5-2 | `src/tracing.py` — `make_record:58`, `write_trace:78` (`logs/trace.jsonl`), `hitl_violations:111` (HITL 준수 검사) / `src/agent.py` `_build_response:229` (응답 trace). LangFuse 는 계정·키가 없어 적용하지 않음 | ✅ |
+| LCEL chain (Pydantic 구조화 출력) | 1 | 최종 응답을 `{answer, contexts, trace}` Pydantic 모델로 반환 | 3-7 | `src/agent.py` — `Context:108`, `TraceStep:114`, `QueryResponse:121`, `run_query:301`. 응답은 `create_agent` 그래프 결과를 Pydantic 모델로 구성하고 `src/api.py` 의 `response_model` 로 검증한다 (`prompt \| llm` 형태의 LCEL 파이프 체인은 쓰지 않음) | ✅ |
+| RAG (하이브리드 검색·쿼리 확장) | 2 | 메서드·클래스 단위 청킹, 벡터 + BM25, 결과 없을 때 질의 재작성 | 3-1, 3-2 | `src/retriever.py` — `make_chunks:282`, `get_index:329`, `_rrf:365`, `rewrite_query:377`, `search_code:418` / `src/embeddings.py` — `embed_texts:76` (Titan v2, 해시 캐시) | ✅ |
+| ReAct (도구 자율 선택) | 3 | `bind_tools` 로 도구 8개 결합, 질의 유형별 호출 순서 | 3-4 | `src/agent.py` — `build_agent:164` (`create_agent` 로 도구 8개 결합), 질의 유형별 흐름은 `SYSTEM_PROMPT` | ✅ |
+| 도구 다중 | 4 | 검색·파일 조회·구조 추출·의존성 그래프·영향도를 한 질의에서 2~3개 조합 | 3-2, 3-4 | `src/tools.py` — `read_file:191`, `list_structure:201`, `build_dependency_graph:222`, `find_usages:288`, `extract_features:318`, `validate_diagram:398`, `save_doc:436` + `src/retriever.py` 의 `search_code` (에이전트에 8종 결합) | ✅ |
+| 가드레일 (PII·인젝션) | 5 | 경로 제한, 비밀·개인정보 마스킹, 인젝션 방어, 범위 밖 질문 안내 | 4 | `src/guardrails.py` — `check_input:170` (규칙 + Haiku 범위 분류 `classify_scope:158`), `mask_text:187`, `InputGuardMiddleware:212`, `MaskingMiddleware:226` / 경로 제한 `src/tools.py` `_safe_path` | ✅ |
+| HITL (위험 작업 승인) | 5 | `save_doc` 저장 전 `interrupt()` 로 승인·거절·수정 요청 | 3-5 | `src/agent.py` — `save_doc:133` (`approved` 를 숨긴 래퍼), `build_agent:164` 의 `HumanInTheLoopMiddleware`, `_approval_description:139`, `_run_query:324` (승인·거절·수정 요청 해석, 수정 최대 3회) | ✅ |
+| 미들웨어 (요약·마스킹·재시도) | 5 | PII 마스킹, 도표 검증 재시도, 대화 이력 요약 | 3-6, 3-7 | `src/guardrails.py` — `OutputCheckMiddleware:369` (Mermaid 검증·재시도 2회, '없는 대상' 답의 메서드 목록 완전성 검사 `check_method_listing:349`), `MaskingMiddleware:226` / `src/agent.py` — `SummarizationMiddleware` (`build_agent:164`) | ✅ |
+| Observability · Trace | 7 | 모든 도구 호출을 `trace` 에 담고 LangFuse 또는 JSON 로그로 기록 | 3-7, 5-2 | `src/tracing.py` — `make_record:58`, `write_trace:78` (`logs/trace.jsonl`), `hitl_violations:111` (HITL 준수 검사) / `src/agent.py` `_build_response:230` (응답 trace) / `src/usage.py` (요청·평가 케이스별 토큰 사용량: 에이전트·Haiku 보조 호출·임베딩·judge). LangFuse 는 계정·키가 없어 적용하지 않음 | ✅ |
 | 평가 (RAGAS · 인-아웃 세트) | 7 | 인-아웃 세트 + RAGAS 4지표 | 5 | `evaluation/run_eval.py` (러너: 규칙 + LLM judge, 검색 지표, RAGAS), `evaluation/test_queries.csv`, `evaluation/ragas_reference.json`, `evaluation/round1_report.md`. 1차·RAGAS·2차 완료 (`round2_report.md`) | ✅ |
 
 적용 안 함: MCP 서버 연동(Day 4), Multi-Agent Supervisor(Day 6), Plan-Execute·장기 메모리(Day 7). 사유는 SERVICE.md 2절.
@@ -38,8 +38,8 @@
 - 에이전트 미들웨어 순서: 입력 가드(규칙 + 범위 분류) → 대화 이력 요약 → (에이전트) → 도표 검증·재시도 → HITL 승인 → 마스킹
 - 도표는 LLM 이 그리지 않고 코드 파싱(`build_dependency_graph`)으로 만들며, LLM 이 가공한 도표만 `validate_diagram` 으로 검증한다.
 - LLM: AWS Bedrock — 에이전트 Claude Sonnet 4.6, 보조(질의 재작성·범위 분류·이력 요약·RAGAS 채점) Claude Haiku 4.5, 임베딩 Titan Text Embeddings v2 (1024차원)
-- 요청마다 `logs/trace.jsonl` 에 trace 를 기록하고 `python -m src.tracing --check` 로 HITL 준수(승인 없는 저장 0건)를 검사한다.
-- 분석 대상: `data/petclinic-legacy/` (읽기 전용)
+- 요청마다 `logs/trace.jsonl` 에 trace 와 토큰 사용량(모델별)을 기록하고 `python -m src.tracing --check` 로 HITL 준수(승인 없는 저장 0건)를 검사한다.
+- 분석 대상: 기본 `data/petclinic-legacy/`, 환경변수 `TARGET_ROOT` 로 변경 (읽기 전용, 한 서버 = 한 대상. 아래 "다른 프로젝트 분석하기")
 
 ## 실행 방법
 
@@ -49,6 +49,10 @@ venv\Scripts\activate
 pip install -r requirements.txt
 # .env 에 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_DEFAULT_REGION 설정
 # (선택) BEDROCK_MODEL_ID 로 사용할 모델 지정
+```
+Python 3.14 에서 확인했고, `requirements.txt` 는 동작을 확인한 버전으로 고정되어 있다(새 가상환경에 설치해 테스트·서버 기동까지 확인). 설치가 끝나면 Bedrock 없이 도는 단위 테스트로 환경을 먼저 점검할 수 있다.
+```
+python -m pytest        # 180개 테스트, 약 5초 (가드레일·도표 검증·마스킹·청킹·HITL 승인 해석·trace·토큰 집계·분석 대상 설정·평가 지표 계산 등)
 ```
 분석 대상 소스(`data/petclinic-legacy/`)는 저장소에 포함되어 있다. RAG 인덱스(`data/index/`)와 trace 로그(`logs/`)는 생성물이라 저장소에 없고, 처음 `search_code` 가 실행될 때 인덱스가 자동으로 만들어지며 이때 Bedrock 임베딩(Titan v2) 호출 권한이 필요하다.
 
@@ -85,13 +89,29 @@ python scripts/try_approval.py --decision approve --cleanup   # 문서 저장 �
 
 **5. 평가** (프로젝트 루트에서)
 ```
-python -m evaluation.run_eval --round 1        # 인-아웃 세트 17건 실행·채점 → evaluation/results/round1.json
+python -m evaluation.run_eval --round 1 --dry-run   # 실행 대상과 예상 토큰만 출력 (모델 호출 없음)
+python -m evaluation.run_eval --round 1        # 인-아웃 세트 21건 실행·채점 → evaluation/results/round1.json (케이스별·모델별 토큰 사용량 포함. --budget 토큰 으로 상한)
+python -m evaluation.run_eval --rescore 1      # 저장된 결과를 현재 판정 기준(TRAIT_PASS_RATIO 등)으로 다시 판정 (모델 호출 없음)
 python -m evaluation.run_eval --retrieval 1    # 정답 위치 기준 검색 지표
 python -m evaluation.run_eval --ragas 1        # RAGAS 4지표 (정답 8케이스)
 python -m evaluation.run_eval --compare 1 2    # 1차·2차 비교
 python -m src.tracing --check                  # trace 로그 요약과 HITL 준수 검사 (승인 없는 저장 0건)
 python -m src.retriever "질의"                  # 검색 점검 (청크별 벡터·BM25 순위)
 ```
+
+**6. 다른 프로젝트 분석하기**
+
+환경변수 `TARGET_ROOT` 하나로 다른 Java/Spring 프로젝트를 분석한다. 소스 루트·기본 패키지·Spring XML 은 `package` 선언과 폴더 구조에서 자동으로 찾는다. 한 서버는 한 프로젝트만 분석하고, 인덱스는 프로젝트별 폴더에 따로 만들어진다.
+```
+git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git data/spring-petclinic-boot   # 예: Spring Boot 버전 (저장소에는 포함하지 않음)
+set TARGET_ROOT=data/spring-petclinic-boot        # PowerShell 은 $env:TARGET_ROOT="data/spring-petclinic-boot"
+python -m src.settings                             # 감지한 소스 루트·기본 패키지·XML 확인
+uvicorn src.api:app --port 8000
+```
+- 감지가 틀리면 `SOURCE_ROOTS`(세미콜론 구분)·`BASE_PKG`·`TARGET_NAME` 으로 덮어쓴다. 자기 프로젝트이거나 상위 폴더, 자바 소스가 없는 폴더는 서버 시작 시 거부한다.
+- 새 프로젝트는 처음 `search_code` 를 쓸 때 인덱스를 만들고 Titan 임베딩을 호출한다(Boot petclinic 은 약 140건).
+- **검증:** Boot 버전 petclinic 에서 도구는 클래스 25개를 모두 분류하고(미분류 0), 기능 17건을 추출하고, 도표 검증을 통과했다. 대표 질문 5건(기능 목록·도표·영향도·캐시 설정 연계·코드 설명)에 대한 에이전트 답변이 소스로 확인한 정답과 일치했다(각 1회 실행). 이 검증 과정에서 계층 도표에서 web·repository 가 사라지던 문제(같은 패키지 참조 누락)와 `.html` 템플릿이 분석에서 빠지던 문제를 찾아 고쳤다.
+- **지원하지 않거나 약한 것:** Spring XML 이 없는 프로젝트의 프로필·설정 분석(`@Profile`·`application.properties` 미지원), `.properties` 파일 안의 참조 영향도, 빌드 설정(`pom.xml`·`build.gradle`) 분석, Kotlin, 서비스 계층이 없는 구조에서도 시스템 프롬프트가 4계층(web·service·repository·model)을 전제로 쓰여 있다는 점. 프롬프트는 petclinic-legacy 17건으로 다듬은 것이라 다른 프로젝트에서 같은 품질을 보장하지 않는다(Boot 5건은 모두 맞았지만 표본이 작다).
 
 ## RAGAS 평가 결과
 정답을 아는 8케이스(`evaluation/ragas_reference.json`)의 에이전트 답변·컨텍스트를 채점했다. 채점 LLM 은 에이전트와 다른 Haiku 4.5, 케이스당 1회 실행이다. 원자료 `evaluation/results/ragas1.json`, 해석 [round1_report.md](evaluation/round1_report.md) 5-2절.
@@ -120,7 +140,7 @@ python -m src.retriever "질의"                  # 검색 점검 (청크별 벡
 - 위 비교에는 케이스 6 프롬프트 외에 케이스 10 프롬프트 보완, 마스킹 JSON 버그 수정, 계정 교체가 함께 들어 있어 지표 변화를 개별 원인으로 나눌 수 없다. 원인 분리는 아래 "케이스 6 단독 비교"와 "케이스 2 개선"의 프롬프트 A/B 만 가능하다.
 
 ## 인-아웃 세트 통과율 (자체 평가)
-케이스 17건: positive 7 · negative 3 · edge 4 · guardrail 3. 판정은 규칙(코드) 6건 + LLM judge 11건(기대 특성 충족률 70% 이상, 금지 항목 위반 없음)이다. 상세는 [round1_report.md](evaluation/round1_report.md), [round2_report.md](evaluation/round2_report.md).
+1·2차는 17건(positive 7 · negative 3 · edge 4 · guardrail 3)으로 측정했고, 이후 category 별로 신규 질문을 하나씩 더해 현재 21건(positive 8 · negative 4 · edge 5 · guardrail 4)이다. 판정은 규칙(코드) 7건 + LLM judge 14건(기대 특성 충족률 70% 이상, 금지 항목 위반 없음)이다. 상세는 [round1_report.md](evaluation/round1_report.md), [round2_report.md](evaluation/round2_report.md).
 
 - **1차 (개선 전): 15 / 17 통과 (88%)** — positive 7/7, negative 1/3, edge 4/4, guardrail 3/3. guardrail 100%, 승인 없는 저장 0건, 근거 인용률 100%, 영향도 재현율 100%. 목표(1차 60%)를 넘었다.
   - 실패 2건은 모두 negative: #8 결제 모듈(없다고 안내했지만 "가까운 실제 기능 제안" 누락), #10 `OwnerService.deleteOwner`(없다고 안내했지만 `ClinicService` 메서드 9개 중 2개만 안내). 둘 다 프롬프트 원인이다.
@@ -128,6 +148,8 @@ python -m src.retriever "질의"                  # 검색 점검 (청크별 벡
   - 정식 2차 직전의 중간 점검(태그 `6fix`)도 17/17, fixed [8, 10] 으로 같았다. 두 번의 단일 실행이 일치했다는 정도의 재현 확인이다.
   - **#10 프롬프트 보완:** "가장 가까운 실제 클래스의 메서드를 15개 이하면 빠짐없이 나열". 단독 3회 재실행에서 2회 통과(보완 전 2회 모두 실패)였고, 전체 재실행에서는 통과했다. 그래도 한 번은 관련 메서드만 추려 실패했으므로 안정적이라고 단정하지 않는다. #8 도 같은 변경의 부수 효과로 보이나 단정하지 않는다.
   - **#6 캐시 설정 검색 보완 (아래 "케이스 6 개선" 참고).**
+- **3차 (일반화 작업 후, 신규 4건 포함 21건, 토큰 사용량 첫 기록): 20 / 21 통과 (95%)** — positive 8/8, negative 3/4, edge 5/5, guardrail 4/4. 실패는 #8 하나(기대 특성 2 "결제와 가장 가까운 기능으로 방문 등록 제안" 미충족. 결제가 없다는 안내와 환각 없음은 충족). 공통 17건 기준으로는 2차 17/17 대비 #8 하나가 빠진 것이다. #8 은 1차·개발 중·단계별 회귀에서 실패하고 3회 통과한 불안정 케이스이고, 판정 기준 문구("방문 등록을 제안")가 모호해서 판정이 갈린다. 이번 변경으로 생긴 회귀로 보지 않지만 원인을 확정하지는 못했다. 신규 18~21 은 개발 중 보지 않은 질문이며 모두 통과했다(신규 4건만 따로 돌린 1회와 3차 전체 1회, 두 번 모두 4/4).
+  - 토큰 사용량(3차): 모델 요청 141건, 입력 450,596·출력 33,729 토큰. Sonnet 에이전트 입력 404,551, judge 38,631, Haiku 보조 7,023. 케이스당 입력 평균 약 2.1만, 가장 큰 케이스는 #20(69,701)·#11(54,899)·#9(43,091)이다.
 - **개선폭: +2건 (15 → 17), negative 1/3 → 3/3.** 개선별 효과의 근거 강도는 [round2_report.md](evaluation/round2_report.md) 4절에 있다. (통제 실험으로 확인한 것: #6 캐시 설정 검색, #2 설정 근거 / 표본이 작은 것: #10 / 부수 효과로 추정: #8)
 - **해석 주의:** 100% 는 단일 실행이고 같은 17건으로 개발을 반복한 뒤의 값이라 낙관적이다. 전체 실행에는 #6·#10 프롬프트, 마스킹 버그 수정, 계정·리전 변경이 함께 들어가 17/17 을 #6 한 가지 개선의 효과로 볼 수 없다. 17건이라 1건이 약 6%p 이고, 에이전트는 같은 질문에도 호출 경로가 달라질 수 있어(#10 처럼) 1회 결과로 개선 여부를 단정하기 어렵다.
 
@@ -172,6 +194,8 @@ python -m src.retriever "질의"                  # 검색 점검 (청크별 벡
 - **평가에서 "답이 비어 있지 않으면 통과"인 기본 judge:** 의미가 없어 규칙 + LLM 혼합 판정으로 바꿨다. 영향도 정답 목록은 CSV 의 8개가 실제(10개)보다 좁았고 부분 문자열 매칭에 오탐이 가능해, 소스를 grep 해 10개로 넓히고 단어 경계 매칭으로 고쳤다.
 - **청킹을 고쳐 검색 문제를 풀려던 가설(케이스 6):** XML 설정을 요소 단위로 청킹해도 recall 이 오르지 않았다. 원인은 청크 크기가 아니라 에이전트가 메서드 이름과 기능 키워드를 한 질의에 섞는 것이었고, 측정(순위 분해)으로 확인한 뒤 프롬프트로 해결했다. 가설을 검증 없이 채택하지 않고 같은 임베딩으로 A/B 한 덕분에 효과 없는 변경을 되돌렸다.
 - **도구 출력을 마스킹한 뒤 JSON 으로 다시 읽기:** 비밀값 정규식이 JSON 이스케이프를 깨뜨려 `contexts` 파싱이 조용히 실패했다. 오류가 나지 않고 지표만 낮게 나와 케이스 6 측정 도중에야 발견했다.
+- **프롬프트 예시에 평가 질문을 그대로 쓰기:** 케이스 10 의 질문(`OwnerService.deleteOwner`)을 시스템 프롬프트 예시로 넣어 두었더니 일반화를 위해 예시를 중립 표현으로 바꾸자 같은 케이스가 한 번 실패했다. 옛 예시가 사실상 정답 힌트였을 수 있고, 점수는 그만큼 낙관적이었을 수 있다. 확정은 아니다(단일 실행). 교훈: 평가 질문을 프롬프트 예시에 넣지 않는다.
+- **"관련 있어 보이는 것만 추려 쓰기"를 프롬프트 지시로 막으려는 시도:** 케이스 10(그리고 신규 20)에서 모델이 메서드 목록 중 질문과 관련 있어 보이는 것만 쓰는 문제가 지시 문구에 따라 나타났다 사라졌다 했다. 반드시 지켜야 하는 동작이라 도표 검증과 같은 방식으로 코드가 검사하도록 `OutputCheckMiddleware` 에 목록 완전성 검사를 넣었다. 이 검사는 단위 테스트와 저장된 실패 답변의 재생으로만 확인했고, 실제 모델 실행에서 검사가 작동해 답을 고치는 장면은 아직 관찰하지 못했다.
 - **환경:** Bedrock 일일 토큰 한도로 Sonnet 4.6·4.5 가 번갈아 막혔다. 한도는 리전·프로필별이라 서울(`ap-northeast-2`, `global.` 프로필)로 우회했다. `ragas 0.4.3` 은 `langchain-community` 와 맞지 않아 import 가 실패해 러너 안에서 우회했다.
 
 **최종 채택한 접근 · 왜 그것으로 갔는가**
@@ -185,17 +209,21 @@ python -m src.retriever "질의"                  # 검색 점검 (청크별 벡
 - **#10 은 보완 후에도 불안정하다:** 3회 중 1회는 여전히 관련 메서드만 추려 안내한다. 프롬프트 지시만으로는 완전하지 않아, 도구 결과를 그대로 표로 출력하는 후처리 등이 대안이다.
 - **RAGAS 지표의 변동과 케이스 12:** faithfulness 는 실행마다 흔들리고(케이스 3: 0.65 → 0.86 → 0.58, 평균 0.87 / 0.92 / 0.87), 케이스 12 의 precision 은 0.51 → 0.09 → 0.12 로 낮게 굳었다(`search_code` 가 먼저 호출되어 무관한 청크가 앞에 놓임, 같은 케이스 recall·faithfulness 는 높음). 검색 `top_k`·호출 순서를 손볼 여지가 있고, 8케이스·단일 실행이라 평균의 작은 차이는 해석하지 않는다.
 - **위치 지표의 남은 사각지대:** `list_structure` 위치는 별도 지표(`evidence_recall_with_structure`)로 센다. 그러나 `build_dependency_graph` 는 위치를 반환하지 않아, 이 도구만으로 답한 케이스는 근거 recall 이 낮게 나올 수 있다. 1차 측정은 저장된 trace 가 없어 새 지표로 다시 계산할 수 없고, 이후 실행부터 두 값을 함께 기록한다.
-- **평가 규모와 편향:** 17건, 같은 케이스로 개발한 뒤의 점수, 에이전트와 같은 모델 계열의 judge(규칙 판정 케이스는 영향 없음)라 절대 수치는 낙관적일 수 있다.
-- **정적 분석의 한계:** 정규식 기반이라 import 없는 같은 패키지 내 참조를 놓칠 수 있고, XML 프로필로 바뀌는 repository 구현체는 인터페이스 수준까지만 도표로 그린다.
+- **평가 규모와 편향:** 21건(그중 17건으로 개발), 같은 케이스로 개발한 뒤의 점수, 에이전트와 같은 모델 계열의 judge(규칙 판정 케이스는 영향 없음)라 절대 수치는 낙관적일 수 있다.
+- **정적 분석의 한계:** 정규식 기반이다. import 없는 같은 패키지 참조는 클래스 이름이 코드에 나오는지(주석·문자열 제외)로 추정하고, 같은 이름의 클래스가 여러 패키지에 있으면 하나만 남는다. XML 프로필로 바뀌는 repository 구현체는 인터페이스 수준까지만 도표로 그린다.
+- **일반화의 한계:** 위 "다른 프로젝트 분석하기" 참고. Spring XML 이 없는 프로젝트의 프로필·설정 분석과 `.properties` 영향도는 지원하지 않고, 프롬프트는 petclinic 으로 다듬었다. 두 번째 프로젝트 검증은 질문 5건 1회 실행이다.
 - **운영 한계:** 체크포인터가 메모리 기반이라 서버를 재시작하면 승인 대기가 사라진다. LangFuse 는 계정·키가 없어 적용하지 못하고 JSON 로그만 쓴다.
 
 ## 핵심 코드 위치
 - `src/agent.py` — 메인 에이전트 그래프 (`create_agent`, 도구 8종, HITL, 미들웨어 결합, `run_query`)
-- `src/tools.py` — 도메인 도구 7종 (정적 분석 + `save_doc`)
+- `src/settings.py` — 분석 대상 설정 (`TARGET_ROOT` 와 소스 루트·기본 패키지·XML 자동 감지, 대상별 인덱스 폴더, 위험한 대상 거부)
+- `src/tools.py` — 도메인 도구 7종 (정적 분석 + `save_doc`, 계층 분류 규칙은 파일 상단 상수)
 - `src/retriever.py` — RAG 파이프라인 (청킹, 하이브리드 검색, 질의 재작성, `search_code`)
 - `src/embeddings.py` — Titan 임베딩 호출과 해시 캐시
 - `src/guardrails.py` — 입력 가드, 도표 검증, 마스킹 미들웨어
 - `src/tracing.py` — trace JSON 로그와 HITL 준수 검사
+- `src/usage.py` — LLM 토큰 사용량 집계 (요청·평가 케이스 단위, 모델별, judge·Haiku·임베딩 포함)
 - `src/api.py` — `POST /query`
 - `scripts/` — 수동 시험 스크립트 (`try_query.py` 일반 질의, `try_approval.py` 문서 승인 흐름, `_client.py` 공용)
-- `evaluation/` — `test_queries.csv`(17건), `run_eval.py`(러너), `ragas_reference.json`(정답 위치), `round1_report.md`, `results/`
+- `tests/` — 단위 테스트 180개 (Bedrock·네트워크 불필요)
+- `evaluation/` — `test_queries.csv`(21건), `run_eval.py`(러너), `ragas_reference.json`(정답 위치), `round1_report.md`, `results/`

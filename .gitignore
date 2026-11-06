@@ -54,3 +54,6 @@ logs/
 
 # 참고용 과제코드 제거
 study_src/
+
+# 일반화 검증용 두 번째 프로젝트 (Spring Boot 버전 petclinic). 받는 방법은 README 참고
+data/spring-petclinic-boot/

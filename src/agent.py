@@ -29,7 +29,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from src import tools as domain_tools
-from src import tracing
+from src import tracing, usage as usage_mod
 from src.guardrails import (InputGuardMiddleware, MaskingMiddleware, OutputCheckMiddleware,
                            check_input, mask_text)
 from src.retriever import search_code
@@ -60,14 +60,15 @@ SYSTEM_PROMPT = (
     "- 구조·아키텍처 도표 요청: build_dependency_graph 를 호출하고 결과의 mermaid 를 ```mermaid 블록으로 그대로 씁니다. "
     "노드·화살표를 직접 만들거나 고치지 않습니다. 도표를 요약·단순화하더라도 실제 클래스·계층명(web, service, repository, "
     "model, common, DB, profile_*)만 쓰며, 시스템이 도표를 검증해 불일치를 되돌려 줍니다. "
-    "repository 구현체(jdbc/jpa/spring-data-jpa)는 XML 프로필에 따라 런타임에 선택되므로 service 가 어느 구현을 쓰는지는 "
-    "정적 분석으로 알 수 없다는 한계를 함께 밝힙니다. 구현체 선택을 묻는 질문이면 search_code 로 'SPRING_PROFILE' 같은 "
-    "기본 프로필 설정을 찾아 read_file 로 확인하고, 기본 활성 프로필과 그 근거(파일:라인)를 함께 밝힙니다.\n"
+    "repository 구현체가 여러 개이고 Spring 프로필·설정에 따라 런타임에 선택되는 구조라면 service 가 어느 구현을 쓰는지는 "
+    "정적 분석으로 알 수 없다는 한계를 함께 밝힙니다. 구현체·프로필 선택을 묻는 질문이면 search_code 로 'spring.profiles.active', "
+    "'setActiveProfiles', 'default profile' 같은 기본 프로필 설정을 찾아 read_file 로 확인하고, "
+    "기본 활성 프로필과 그 근거(파일:라인)를 함께 밝힙니다.\n"
     "- 영향도 질문(\"X 를 바꾸면 어디가 영향받아?\"): find_usages 로 참조 위치를 모으고, 필요하면 "
     "build_dependency_graph(scope) 로 의존 방향을 확인한 뒤 계층별(model·web·repository·view·db)로 요약합니다. "
     "is_comment 가 true 인 줄은 주석 속 언급일 뿐 실제 의존이 아니므로 구분해서 밝힙니다. "
     "모든 위치는 파일:라인으로 씁니다.\n"
-    "- 소스에 없는 클래스·메서드(예: OwnerService.deleteOwner)를 물으면 '존재하지 않음'을 먼저 말하고, "
+    "- 소스에 없는 클래스·메서드(예: 서비스 계층에 없는 XxxService.deleteXxx)를 물으면 '존재하지 않음'을 먼저 말하고, "
     "가장 가까운 실제 클래스를 list_structure 로 찾아 그 클래스가 제공하는 메서드를 파일:라인과 함께 안내합니다. "
     "질문과 관련 있어 보이는 것만 추리지 말고, 메서드가 15개 이하이면 list_structure 결과의 메서드를 빠짐없이 전부 "
     "나열하며(일부만 보여 주면 사용자가 나머지를 없다고 오해합니다), 15개를 넘으면 총 개수를 밝히고 관련된 것을 우선 안내합니다. "
@@ -305,16 +306,19 @@ def run_query(question: str, session_id: str | None = None) -> QueryResponse:
     session_id = session_id or uuid.uuid4().hex
     started = time.perf_counter()
     resp, usage, error = None, {}, None
-    try:
-        resp, usage = _run_query(question, session_id)
-        return resp
-    except Exception as e:  # 오류도 로그에 남기고 그대로 전달한다
-        error = type(e).__name__
-        raise
-    finally:
-        tracing.write_trace(tracing.make_record(
-            session_id=session_id, question=question, response=resp.model_dump() if resp else None,
-            latency_ms=int((time.perf_counter() - started) * 1000), model=MODEL_ID, usage=usage, error=error))
+    with usage_mod.collect() as ledger:   # 이 요청의 모든 모델 호출(에이전트·범위 분류·재작성·요약)과 임베딩 토큰을 모은다
+        try:
+            resp, usage = _run_query(question, session_id)
+            return resp
+        except Exception as e:  # 오류도 로그에 남기고 그대로 전달한다
+            error = type(e).__name__
+            raise
+        finally:
+            measured = ledger.summary()
+            tracing.write_trace(tracing.make_record(
+                session_id=session_id, question=question, response=resp.model_dump() if resp else None,
+                latency_ms=int((time.perf_counter() - started) * 1000), model=MODEL_ID,
+                usage=measured if measured["requests"] else usage, error=error))
 
 
 def _run_query(question: str, session_id: str) -> tuple[QueryResponse, dict]:
@@ -357,7 +361,7 @@ def _run_query(question: str, session_id: str) -> tuple[QueryResponse, dict]:
         graph_input = {"messages": [{"role": "user", "content": question}]}
 
     try:
-        result = _agent.invoke(graph_input, config)
+        result = _agent.invoke(graph_input, {**config, "callbacks": usage_mod.current_callbacks()})
     finally:
         if token is not None:
             _APPROVED.reset(token)

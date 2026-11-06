@@ -22,7 +22,7 @@ import numpy as np
 from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 
-from src import embeddings
+from src import embeddings, settings
 from src.tools import TARGET_ROOT, _read, parse_project
 
 load_dotenv()
@@ -43,8 +43,8 @@ XML_STRUCTURED = False        # True: 요소 단위 청킹. False: 예전 방식
 XML_MIN_LINES = 6             # 이보다 짧은 요소는 다음 요소와 합친다 (너무 잘게 쪼개면 문맥이 사라진다)
 XML_MAX_LINES = 40            # 요소가 이보다 길면 자식 요소 단위로 내려간다 (더 못 내려가면 고정 창)
 CLASS_CHUNK_FROM_PACKAGE = True  # True: 클래스 청크에 package·import 포함 (의존 키워드가 BM25 에 걸린다)
-INDEX_EXTS = {".java", ".xml", ".jsp", ".sql"}   # 인덱스 대상 확장자 (SERVICE.md 3-1)
-INDEX_ROOT = TARGET_ROOT / "src" / "main"        # 테스트·이미지·폰트 제외
+INDEX_EXTS = {".java", ".xml", ".jsp", ".html", ".sql"}   # 인덱스 대상 확장자 (SERVICE.md 3-1)
+INDEX_ROOTS = settings.INDEX_ROOTS               # 인덱스 대상 폴더들 (자동 감지: src/main). 테스트·빌드 산출물 제외
 
 # --- 검색 ---
 DEFAULT_TOP_K = 5
@@ -59,7 +59,7 @@ BM25_MIN_SCORE = 0.0          # BM25 최고점이 이 값 이하 = 질의 단어
 VEC_MIN_SIM = 0.30            # 벡터 최고 유사도(코사인)가 이 값 미만 = 의미상으로도 먼 질의
 REWRITE_MODEL_ID = os.getenv("BEDROCK_REWRITE_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 REWRITE_PROMPT = (
-    "다음은 Java/Spring(PetClinic) 소스 검색 질의입니다. 코드에서 실제로 쓰일 법한 "
+    "다음은 Java/Spring 소스 검색 질의입니다. 코드에서 실제로 쓰일 법한 "
     "영어 식별자(클래스·메서드·어노테이션·패키지명)와 핵심 영어 키워드만 공백으로 나열해 "
     "한 줄로 출력하세요. 설명·따옴표·번호는 쓰지 마세요. "
     "소스 코드와 무관한 질의면 NONE 만 출력하세요.\n\n질의: {query}"
@@ -260,13 +260,13 @@ def _xml_chunks(path: str, lines: list[str], src: str, name: str) -> list[dict] 
 def _other_chunks() -> list[dict]:
     """xml / jsp / sql. xml 은 요소 단위(XML_STRUCTURED), 나머지는 NONJAVA_MAX_LINES 줄 단위로 나눈다."""
     out = []
-    for f in sorted(INDEX_ROOT.rglob("*")):
+    for f in sorted({p for root in INDEX_ROOTS for p in root.rglob("*")}):
         if f.suffix.lower() not in INDEX_EXTS - {".java"}:
             continue
         path = f.resolve().relative_to(TARGET_ROOT.resolve()).as_posix()
         src = _read(f)
         lines = src.splitlines()
-        layer = {".xml": "config", ".jsp": "view", ".sql": "db"}[f.suffix.lower()]
+        layer = {".xml": "config", ".jsp": "view", ".html": "view", ".sql": "db"}[f.suffix.lower()]
         if XML_STRUCTURED and f.suffix.lower() == ".xml":
             xml_chunks = _xml_chunks(path, lines, src, f.name)
             if xml_chunks is not None:

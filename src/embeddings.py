@@ -16,18 +16,19 @@ import hashlib
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import boto3
 import numpy as np
 from botocore.config import Config
 from dotenv import load_dotenv
 
+from src import settings, usage
+
 load_dotenv()
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INDEX_DIR = PROJECT_ROOT / "data" / "index"          # 인덱스·캐시 저장 위치 (.gitignore 대상)
-CACHE_PATH = INDEX_DIR / "embed_cache.json"
+CACHE_DIR = settings.CACHE_DIR                       # 임베딩 캐시는 대상과 무관하게 공유한다 (텍스트 해시가 키, .gitignore 대상)
+CACHE_PATH = CACHE_DIR / "embed_cache.json"
+INDEX_DIR = settings.INDEX_DIR                       # 벡터·메타는 대상별 폴더 (data/index/<이름>-<해시>/)
 
 EMBED_MODEL_ID = os.getenv("BEDROCK_EMBED_MODEL_ID", "amazon.titan-embed-text-v2:0")
 EMBED_DIM = 1024
@@ -53,11 +54,14 @@ def _key(text: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _call(text: str) -> list[float]:
-    """Titan 임베딩 API 를 한 번 호출한다. (정규화된 벡터 반환)"""
+def _call(text: str, ledger: usage.Ledger | None = None) -> list[float]:
+    """Titan 임베딩 API 를 한 번 호출한다. (정규화된 벡터 반환) ledger 는 토큰 집계용이다."""
     body = {"inputText": text[:EMBED_MAX_CHARS], "dimensions": EMBED_DIM, "normalize": True}
     resp = _bedrock().invoke_model(modelId=EMBED_MODEL_ID, body=json.dumps(body))
-    return json.loads(resp["body"].read())["embedding"]
+    out = json.loads(resp["body"].read())
+    if ledger:   # 작업 스레드에는 ContextVar 가 전달되지 않아 호출 시점의 ledger 를 넘겨 받는다
+        ledger.add(EMBED_MODEL_ID, input_tokens=out.get("inputTextTokenCount", 0))
+    return out["embedding"]
 
 
 def _load_cache() -> dict[str, list[float]]:
@@ -75,10 +79,11 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     keys = [_key(t) for t in texts]
     todo = {k: t for k, t in zip(keys, texts) if k not in cache}  # 중복 텍스트도 한 번만 호출
     if todo:
+        ledger = usage.current()   # 작업 스레드로 넘기기 위해 미리 잡아 둔다
         with ThreadPoolExecutor(max_workers=EMBED_WORKERS) as pool:
-            for k, vec in zip(todo, pool.map(_call, todo.values())):
+            for k, vec in zip(todo, pool.map(lambda t: _call(t, ledger), todo.values())):
                 cache[k] = vec
-        INDEX_DIR.mkdir(parents=True, exist_ok=True)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
         CACHE_PATH.write_text(json.dumps(cache), encoding="utf-8")
     return np.array([cache[k] for k in keys], dtype="float32")
 

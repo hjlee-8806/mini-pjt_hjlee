@@ -2,7 +2,10 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from src import settings
 from src.agent import QueryResponse, run_query
+
+settings.validate_target()  # 분석 대상이 잘못됐으면 서버를 시작하지 않는다 (원인과 해결 방법이 오류에 담긴다)
 
 app = FastAPI(title="Source Code Analyst")
 

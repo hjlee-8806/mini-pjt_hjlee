@@ -1,11 +1,29 @@
-boto3
-python-dotenv
-langchain
-langchain-aws
-langgraph
-langchain-community
-faiss-cpu
-rank-bm25
-fastapi
-uvicorn
-ragas
+# Python 3.14 에서 동작을 확인한 버전 (2026-11-05). 새 가상환경에 설치해 import·서버 기동·테스트까지 확인했다.
+# 직접 쓰는 패키지만 고정하고 하위 의존성은 pip 가 맞춘다.
+
+# AWS Bedrock
+boto3==1.43.123
+python-dotenv==1.2.4
+
+# 에이전트
+langchain==1.4.8
+langchain-core==1.7.4
+langchain-aws==1.9.1
+langgraph==1.2.19
+pydantic==2.14.2
+
+# 검색 (벡터 + BM25)
+numpy==2.5.4
+faiss-cpu==1.15.1
+rank-bm25==0.2.2
+
+# API 서버
+fastapi==0.162.0
+uvicorn==0.54.0
+
+# 평가 (ragas 0.4.3 은 langchain-community 0.4.x 와 import 가 맞지 않아 evaluation/run_eval.py 가 우회한다)
+ragas==0.4.3
+langchain-community==0.4.2
+
+# 테스트 (python -m pytest)
+pytest==9.2.0

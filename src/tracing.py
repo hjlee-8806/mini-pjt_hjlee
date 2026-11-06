@@ -147,6 +147,8 @@ def summarize(records: list[dict]) -> dict:
         "latency_ms_max": max(lat) if lat else 0,
         "input_tokens": sum(r.get("usage", {}).get("input_tokens", 0) for r in records),
         "output_tokens": sum(r.get("usage", {}).get("output_tokens", 0) for r in records),
+        "model_requests": sum(r.get("usage", {}).get("requests", 0) for r in records),
+        "cache_read_tokens": sum(r.get("usage", {}).get("cache_read_tokens", 0) for r in records),
         "steps": dict(tools.most_common()),
     }
 
@@ -166,7 +168,7 @@ def _main() -> int:
     print(f"로그: {a.log or LOG_PATH}  ({len(records)}건)")
     s = summarize(records)
     print(f'상태 분포: {s["status"]} | 평균 {s["latency_ms_avg"]}ms, 최대 {s["latency_ms_max"]}ms | '
-          f'토큰 입력 {s["input_tokens"]:,} / 출력 {s["output_tokens"]:,}')
+          f'토큰 입력 {s["input_tokens"]:,} / 출력 {s["output_tokens"]:,} (모델 요청 {s["model_requests"]}건, 캐시 읽기 {s["cache_read_tokens"]:,})')
     print(f'단계 분포: {s["steps"]}')
     v = hitl_violations(records)
     extra = unaccounted_outputs(records)

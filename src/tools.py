@@ -6,7 +6,7 @@
 - save_doc : 쓰기. 사용자 승인(HITL) 결과(approved=True)가 없으면 거부한다.
 - search_code (RAG) 는 src/retriever.py 에서 제공한다.
 
-분석 대상은 TARGET_ROOT(data/petclinic-legacy) 하위로 제한한다.
+분석 대상은 TARGET_ROOT(환경변수 TARGET_ROOT, 기본값은 src/settings.py) 하위로 제한한다. 경로·소스 루트·기본 패키지는 src/settings.py 가 정한다.
 """
 from __future__ import annotations
 
@@ -16,23 +16,30 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TARGET_ROOT = PROJECT_ROOT / "data" / "petclinic-legacy"
-JAVA_ROOT = TARGET_ROOT / "src" / "main" / "java"
-SPRING_XML_DIR = TARGET_ROOT / "src" / "main" / "resources" / "spring"
-OUTPUT_DIR = PROJECT_ROOT / "output"
-BASE_PKG = "org.springframework.samples.petclinic"
+from src import settings
 
-READABLE_EXT = {".java", ".xml", ".jsp", ".sql", ".properties", ".tag"}
+PROJECT_ROOT = settings.PROJECT_ROOT
+TARGET_ROOT = settings.TARGET_ROOT      # 분석 대상 (환경변수 TARGET_ROOT, 기본값은 src/settings.py)
+OUTPUT_DIR = PROJECT_ROOT / "output"
+BASE_PKG = settings.BASE_PKG            # 자동 감지(모든 package 선언의 공통 접두사) 또는 환경변수 BASE_PKG
+
+READABLE_EXT = {".java", ".xml", ".jsp", ".html", ".sql", ".properties", ".tag"}
 
 # ---------------------------------------------------------------- 계층 분류 규칙
-# 우선순위: ① 어노테이션 → ② 패키지 폴더 → ③ 공통/설정 규칙 → ④ unclassified
+# 우선순위: ① 어노테이션 → ② 패키지 폴더 → ③ 공통/설정 규칙 → ④ 관례 추정(모델 어노테이션·슈퍼타입·이름 접미사) → ⑤ unclassified
 LAYER_BY_ANNOTATION = {"Controller": "web", "RestController": "web",
                        "Service": "service", "Repository": "repository"}
 LAYER_BY_PACKAGE = {"web": "web", "service": "service",
-                    "repository": "repository", "model": "model", "util": "common"}
+                    "repository": "repository", "model": "model", "util": "common",
+                    # 패키지 별칭 (다른 프로젝트의 관례)
+                    "controller": "web", "dao": "repository", "entity": "model", "domain": "model", "config": "common"}
 COMMON_ANNOTATIONS = {"Aspect", "Configuration", "ControllerAdvice"}
 COMMON_SUPERTYPE_SUFFIX = ("Initializer",)  # 예: AbstractDispatcherServletInitializer
+# ④ 관례 추정: 계층 어노테이션·패키지가 없는 기능 단위 패키지(owner/, vet/ 등)용. 위 ①~③ 에서 못 정한 클래스에만 적용한다.
+MODEL_ANNOTATIONS = {"Entity", "MappedSuperclass", "Embeddable", "Document", "XmlRootElement"}
+LAYER_BY_SUPERTYPE_SUFFIX = (("Repository", "repository"), ("Formatter", "web"), ("Validator", "web"))
+LAYER_BY_NAME_SUFFIX = (("Controller", "web"), ("Service", "service"), ("Repository", "repository"),
+                        ("Dao", "repository"), ("Mapper", "repository"))
 LAYER_ORDER = ["web", "service", "repository", "model", "common", "unclassified"]
 
 
@@ -59,7 +66,7 @@ def _rel(p: Path) -> str:
 
 # ---------------------------------------------------------------- 파싱
 _CLASS_RE = re.compile(
-    r"^(?:public\s+)?(?:abstract\s+|final\s+)*(class|interface|enum)\s+(\w+)([^{]*)\{",
+    r"^(?:public\s+)?(?:abstract\s+|final\s+)*(class|interface|enum|record)\s+(\w+)([^{]*)\{",
     re.M)
 _METHOD_RE = re.compile(
     r"^(?: {4}|\t)(?:(?:public|protected|private|static|final|abstract|synchronized)\s+)*"
@@ -71,7 +78,8 @@ _NOT_METHOD = {"if", "for", "while", "switch", "catch", "return", "new", "else",
 def parse_project() -> dict:
     """Java 소스를 한 번 파싱해 캐시한다. list_structure·그래프·영향도가 공유한다."""
     classes: dict[str, dict] = {}
-    for f in sorted(JAVA_ROOT.rglob("*.java")):
+    codes: dict[str, str] = {}
+    for f in sorted(f for root in settings.SOURCE_ROOTS for f in root.rglob("*.java")):
         src = _read(f)
         pkg_m = re.search(r"^package\s+([\w.]+);", src, re.M)
         cls_m = _CLASS_RE.search(src)
@@ -102,9 +110,22 @@ def parse_project() -> dict:
             "annotations": annotations, "methods": methods,
             "supers": supers, "imports": imports,
         }
+        codes[name] = _strip_java(src)
     for c in classes.values():
         c["layer"] = _classify(c)
+        # 같은 패키지 클래스는 import 없이 쓰므로(기능 단위 패키지 구조) 코드 속 이름 사용으로 참조를 추정한다
+        c["same_pkg_refs"] = [o["name"] for o in classes.values()
+                              if o is not c and o["package"] == c["package"]
+                              and o["name"] not in {t for _, t in c["supers"]}   # 상속·구현은 이미 따로 표시된다
+                              and re.search(rf"\b{re.escape(o['name'])}\b", codes[c["name"]])]
     return classes
+
+
+def _strip_java(src: str) -> str:
+    """주석과 문자열 리터럴을 지운 코드. 같은 패키지 참조 추정에서 주석·문구 속 이름을 세지 않기 위해 쓴다."""
+    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
+    src = re.sub(r"//[^\n]*", " ", src)
+    return re.sub(r'"(?:\\.|[^"\\\n])*"', '""', src)
 
 
 def _classify(c: dict) -> str:
@@ -121,7 +142,16 @@ def _classify(c: dict) -> str:
         return "common"
     if any(t.endswith(COMMON_SUPERTYPE_SUFFIX) for _, t in c["supers"]):
         return "common"
-    # ④ 그 외
+    # ④ 관례 추정
+    if set(c["annotations"]) & MODEL_ANNOTATIONS:
+        return "model"
+    for suffix, layer in LAYER_BY_SUPERTYPE_SUFFIX:
+        if any(t.endswith(suffix) for _, t in c["supers"]):
+            return layer
+    for suffix, layer in LAYER_BY_NAME_SUFFIX:
+        if c["name"].endswith(suffix):
+            return layer
+    # ⑤ 그 외
     return "unclassified"
 
 
@@ -130,7 +160,7 @@ def parse_profiles() -> dict:
     """Spring XML 의 profile 별 component-scan/jpa:repositories 대상 패키지를 읽는다.
     반환: {"jdbc": ["...repository.jdbc"], "jpa": [...], "spring-data-jpa": [...]}"""
     result: dict[str, list[str]] = collections.defaultdict(list)
-    for xml in sorted(SPRING_XML_DIR.glob("*.xml")):
+    for xml in settings.SPRING_XML_FILES:
         try:
             root = ET.fromstring(_read(xml))
         except ET.ParseError:
@@ -182,7 +212,7 @@ def list_structure(scope: str | None = None) -> list[dict]:
 def _class_edges(classes: dict) -> set[tuple[str, str, str]]:
     edges = set()
     for c in classes.values():
-        for imp in c["imports"]:
+        for imp in c["imports"] + c.get("same_pkg_refs", []):
             edges.add((c["name"], imp, "uses"))
         for kind, t in c["supers"]:
             edges.add((c["name"], t, "impl" if kind == "implements" else "extends"))
@@ -264,13 +294,13 @@ def find_usages(symbol: str) -> dict:
     classes = parse_project()
     file_layer = {c["file"]: c["layer"] for c in classes.values()}
     hits = []
-    for f in sorted(TARGET_ROOT.joinpath("src", "main").rglob("*")):
-        if f.suffix.lower() not in {".java", ".xml", ".jsp", ".tag", ".sql"}:
+    for f in sorted({p for root in settings.INDEX_ROOTS for p in root.rglob("*")}):
+        if f.suffix.lower() not in {".java", ".xml", ".jsp", ".html", ".tag", ".sql"}:
             continue
         for i, line in enumerate(_read(f).splitlines(), 1):
             if pat.search(line):
                 rel = _rel(f)
-                layer = file_layer.get(rel) or {".jsp": "view", ".tag": "view",
+                layer = file_layer.get(rel) or {".jsp": "view", ".tag": "view", ".html": "view",
                                                 ".xml": "config", ".sql": "db"}.get(f.suffix.lower(), "unclassified")
                 hits.append({"path": rel, "line": i, "layer": layer, "text": line.strip()[:160],
                              "is_comment": line.strip().startswith(_COMMENT_PREFIXES)})

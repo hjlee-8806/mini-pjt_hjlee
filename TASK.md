@@ -218,3 +218,58 @@ trace 응답 형식은 제출 규약(`{step, input, output}`)이라 바꾸지 �
 ### 8-2. 제출 전 점검
 - 내용: `.env` 가 커밋 대상이 아닌지, `study_src/` 를 `src/` 가 import 하지 않는지, 폴더 구조가 제출 규약과 같은지 확인한다.
 - 확인: `git status` 에 `.env` 가 없고, `src/` 에서 `study_src` 검색 결과가 0건이다.
+
+---
+
+## 묶음 9. 일반화: petclinic 에만 묶이지 않게 하기
+
+목표: 환경변수 하나(`TARGET_ROOT`)로 다른 Java/Spring 프로젝트(Maven·Gradle, XML 설정·Spring Boot)를 분석한다. 한 서버 = 한 대상, 대상 전환 요청은 범위 밖. 성공 기준: ① petclinic 결과가 변하지 않는다(17/17 유지) ② 구조가 다른 두 번째 프로젝트에서 도구와 도표가 동작한다. 검증용 두 번째 프로젝트는 Spring Boot 버전 petclinic(`data/spring-petclinic-boot`, git 제외).
+
+### 9-1. 설정 일원화와 자동 감지 (완료)
+- `src/settings.py`: `TARGET_ROOT`·`SOURCE_ROOTS`·`BASE_PKG`·`TARGET_NAME` 환경변수, 소스 루트(package 선언과 폴더 경로 대조, test·build·target 제외), 기본 패키지(공통 접두사), 인덱스 대상(`src/main`), Spring XML(`<beans>` 루트) 자동 감지, 대상별 인덱스 폴더, 위험한 대상 거부.
+- `tools.py`·`retriever.py`·`embeddings.py`·`api.py` 가 이를 사용. 기본값은 petclinic 의 예전 하드코딩 값과 같다(테스트로 고정).
+- 확인: 단위 테스트 136개(설정 16개 추가, 합성 프로젝트 5종과 환경변수 통합 시험 포함), petclinic 청크 270개 동일·인덱스가 캐시에서 재조립(임베딩 호출 없음), 보안 거부(`.`, `..`, 없는 폴더). **평가 17건 회귀 확인:** 16/17(94%, 2차는 17/17). 실패는 케이스 8 하나뿐이며 회귀가 아니라 알려진 변동이다. 근거 — ① 커밋된 이전 코드와 현재 코드에서 도구 출력 10가지(청크·클래스 파싱·구조 목록·도표 2종·영향도 2종·기능 목록·프로필·파일 읽기)의 해시가 모두 같다(프롬프트·검색 입력이 그대로이므로 LLM 입력이 달라질 수 없음) ② 케이스 8 을 유효하게 4회 재실행해 2회 통과(한도로 나머지 4회는 오류, 판정 불가). 케이스 8 은 개선 전 2회 실패 → 개선 후 3회 연속 통과 → 이번 실패로 통과율이 반반 수준이며 "기대 특성 2: 가까운 실제 기능(Visit) 제안" 판정이 흔들린다. 안정화는 9 단계와 별개의 과제.
+- 두 번째 프로젝트 점검: 소스 루트·기본 패키지 정상 감지. 그러나 계층 분류가 약하다(25개 중 `unclassified` 12개, repository·service 계층 없음).
+
+### 9-2. 계층 분류를 관례 추정으로 확장 (완료)
+- 결과: petclinic 계층 결과 불변(이전 코드와 클래스별 비교), Boot petclinic `unclassified` 12 → 0. 단위 테스트 147개 통과. LLM 호출 없음.
+- 규칙은 `tools.py` 상단: 패키지 별칭은 ② 에, 모델 어노테이션·슈퍼타입·이름 접미사는 ④(기존 ①~③ 이후)에 둬서 기존 우선순위를 유지한다.
+- `record` 는 정규식에 추가했다. 단, Boot petclinic 의 "25/30" 은 record 때문이 아니라 `package-info.java` 5개가 빠진 것이었다(실제 누락 없음). 이 프로젝트에는 record 선언이 없어 합성 테스트로만 확인했다.
+- 계획(참고):
+- 슈퍼타입(`*Repository`, `JpaRepository`, `CrudRepository`) → repository, 클래스 이름 접미사(`*Controller`, `*Service`, `*Dao`, `*Mapper`) → 해당 계층, 패키지 별칭(`controller`·`dao`·`entity`·`domain`) 추가. 기존 규칙(어노테이션 → 패키지 → 공통)은 우선순위 그대로.
+- `record` 선언도 클래스로 인식(Boot petclinic 은 main 자바 30개 중 25개만 파싱됨).
+- 확인: petclinic 계층 결과 불변, Boot 의 `unclassified` 비율 감소.
+
+### 9-3. 문구·프롬프트 중립화 (완료)
+- 완료(오프라인, 테스트 149개 통과): `guardrails.py` 분류 프롬프트·차단 안내문은 `settings.TARGET_NAME`, `retriever.py` 재작성 프롬프트는 대상 이름 제거, `tools.py` 주석 정리. 안내문의 대상 이름이 폴더 이름(`petclinic-legacy`)으로 바뀐다.
+- **4단계 전체 회귀(21건, 라운드 3, `results/round3.json`) 결과: 20/21 통과.** 실패는 케이스 8 하나(기대 특성 2 '유사 기능으로 방문 등록 제안' 미충족, 1/2). 케이스 8은 1차·개발 중·단계 1 회귀·이번 실행에서 실패하고 3회 통과한 불안정 케이스로, 이번 변경 탓인 회귀로 보지 않는다. 케이스 10은 통과(3/3), 신규 18~21 모두 통과. 공통 1~17 기준 2차(17/17) 대비 회귀 [8]. 신규 18~21 은 개발 중 보지 않은 질문이다.
+  - 케이스 8 의 판정 기준은 '결제와 가장 가까운 기능으로 방문 등록을 제안'을 요구하는데, 에이전트는 실제 기능 표에 Visit 를 나열했을 뿐 명시적으로 제안하지 않았다. 답변 자체는 환각 없이 맞다. 기준 문구가 모호한 것이므로 점수를 맞추려고 바꾸지 않고, 바꾸려면 근거(문구의 모호함)를 따로 적고 사용자 결정으로 한다.
+  - **토큰 실측(첫 기록)**: 21건 합계 모델 요청 141건, 입력 450,596·출력 33,729 토큰(Sonnet 에이전트 56건 입력 404,551, judge 14건 38,631, Haiku 28건 7,023). 케이스당 입력 평균 약 2.1만, 최대 #20(69,701)·#11(54,899)·#9(43,091). 토큰 기록은 실제 Bedrock 에서 Sonnet·Haiku·Titan 모두 잡힌다.
+- 2단계 코드 변경 완료: `agent.py` `SYSTEM_PROMPT` 의 `OwnerService.deleteOwner` 예시를 `XxxService.deleteXxx` 로, `SPRING_PROFILE`/jdbc·jpa 문장을 일반 표현(`spring.profiles.active` 등)으로 바꿨다.
+- 4단계 1회 실행(`results/round93.json`, 케이스 3·8·9·10·15·16): 5/6. **케이스 10 FAIL(2/3)**: 답변이 Owner 관련 메서드 3개만 나열하고 `ClinicService` 의 나머지 메서드(≤15개)를 빠뜨렸다(케이스 10 개선 이전의 실패 유형). 3·8·9·15·16 은 통과. 단일 실행이라 예시 문구 변경 탓인지 케이스 10 의 변동인지 아직 구분하지 못했다. 원인 확인은 승인 후 케이스 10 반복(문구 변경 전후 비교)으로.
+- 신규 케이스 4건 추가(`test_queries.csv` 18~21, category 별 1건): 18 positive(방문 등록 흐름), 19 negative(없는 이메일 발송), 20 edge(저장 호출을 컨트롤러부터 DB 까지 추적, 프로필별 구현체), 21 guardrail(범위 밖 질문, 규칙 판정). 정답 위치는 소스로 확인했고 단위 테스트가 라인을 고정한다. **1회 실행 결과: 4/4 통과.** 18(6/6), 19(3/3), 20(3/4, 75%), 21(규칙). 20 의 미충족은 repository 구현체 3종 중 `SpringDataVisitRepository` 를 빠뜨리고 jpa·jdbc 만 언급한 것으로, 이 질문 유형의 실제 약점이다(케이스 10 과 같은 '관련 있어 보이는 것만 추리기' 계열, 통과 기준 70% 를 간신히 넘음). 19 는 가상 클래스를 지어내지 않았다(`JavaMailSender` 등은 '없다'는 문장 안에서만 언급). 단일 실행이라 안정성은 모른다. 시험용 결과 파일은 삭제. 기존 1·2차 리포트의 수치는 17건 기준이라 21건 라운드와 직접 비교하지 않는다(비교는 공통 1~17 로).
+- 원인 분석(호출 없이, 저장된 trace 기준): 가까운 클래스는 제대로 찾았고(`list_structure` 호출, 서비스 계층을 `ClinicService` 로 정확히 짚음) 실패는 답을 쓰는 단계의 '관련 있어 보이는 것만 추리기'였다. 옛 예시 `OwnerService.deleteOwner` 는 케이스 10 질문과 같아 사실상 정답 힌트였을 수 있다. 범용 도구의 교훈: ① 평가 질문을 프롬프트 예시에 넣지 않는다 ② 반드시 지킬 동작은 프롬프트가 아니라 코드로 검증한다 ③ 평가는 다른 프로젝트에서도 한다.
+- 조치: `guardrails.py` `OutputCheckMiddleware` 에 메서드 목록 완전성 검사 추가(`check_method_listing`, 재시도 1회 후 누락 목록 덧붙임). 단위 테스트 157개 통과. 저장된 케이스 10 실패 답변에 적용하면 심판이 짚은 누락 6개와 같은 목록이 잡힌다(오프라인 재생). 
+- LLM 확인: 검사 추가 직후 케이스 10 실행은 **여전히 FAIL**이었다. trace 를 보니 모델이 `list_structure(scope="OwnerService")` 가 빈 결과로 나오자 `read_file(ClinicService.java)` 로 직접 읽고 Owner 관련 3개만 나열한 경로였고, 검사가 `list_structure` 결과만 봐서 놓쳤다(재시도 0회). 검사를 "모델이 확인한 클래스 = list_structure 결과 + read_file 로 읽은 자바 파일"로 일반화했다(테스트 159개, 실패 답변 오프라인 재생으로 누락 6개 검출). 이후 1회 재실행은 **PASS(3/3)** 이지만, 답변에 덧붙임·재시도 흔적이 없고 모델이 처음부터 9개를 모두 나열했다. 즉 이 통과는 검사의 효과가 아니라 모델 변동일 수 있고, 검사가 LLM 경로에서 실제로 작동하는 것은 아직 한 번도 관찰하지 못했다(단위 테스트와 오프라인 재생으로만 확인). 시험용 `round93.json`·로그는 삭제.
+- 원래 계획:
+- 'PetClinic'·`data/petclinic-legacy/` 문구를 `settings.TARGET_NAME` 으로 치환(`guardrails.py` 분류 프롬프트·차단 안내문, `retriever.py` 재작성 프롬프트), 시스템 프롬프트의 petclinic 고유 예시(`OwnerService.deleteOwner`, `SPRING_PROFILE` 등)를 중립 표현으로. **케이스 8·10 개선에 기여한 문구라 바꾼 뒤 17건 회귀 확인 필수.**
+
+### 9-4. 두 번째 프로젝트 검증 (완료)
+- **오프라인 검증(Boot petclinic, 도구 직접 호출)**: 분류 25개 중 미분류 0, 기능 목록 17건 추출(`/vets.html`·`/vets` 등), 클래스·계층 도표 검증 통과.
+- **오프라인으로 찾아 고친 문제 2건**:
+  1. 계층 도표에 `web`·`repository` 가 없고 `common → model` 만 나왔다. 원인은 의존 추정이 import 만 봐서, 기능 단위 패키지(`owner/` 한 곳에 Controller·Repository·Entity)의 같은 패키지 참조가 사라진 것. 같은 패키지 클래스의 이름 사용(주석·문자열 제외)을 참조로 추가해 `web→model 11, web→repository 6, repository→model 3, repository→DB` 로 복구했다. petclinic-legacy 는 계층 분류·계층 도표·도표 검증 결과가 변하지 않고, 클래스 단위 그래프에만 같은 패키지의 실제 참조 간선이 늘었다(사라진 간선 없음).
+  2. Thymeleaf `.html` 템플릿이 `find_usages`·인덱스·`read_file` 에서 빠져 있어 영향도의 화면 계층이 비었다. `.html` 을 view 로 추가해 `telephone` 영향도에 view 5건이 잡힌다. petclinic-legacy 에는 `.html` 이 없어 영향 없음.
+- **알려진 한계(미해결)**: 서비스 계층이 없는 프로젝트라 도표에 service 가 없다(정상이지만 프롬프트는 4계층을 전제). Spring XML 이 없는 프로젝트는 프로필·설정 분석이 비어 있다(`@Profile`·`application.properties` 미지원). `find_usages` 는 `.properties` 를 스캔하지 않아 `messages*.properties` 의 `telephone` 라벨·검증 메시지는 영향도에 안 나온다. 빌드 설정(`pom.xml`·`build.gradle`)은 분석하지 않는다.
+- **LLM 스모크 5건(키 변경 후 1회씩): 5/5 정답과 일치.** 기능 목록(`/vets.html`·`/vets`, `VetController.java:45,72`), 도표(web→model 11·web→repository 6·repository→model 3·repository→DB, 검증 통과, service 계층 없음을 짚음), 영향도(model 7·db 13·view 5, 메시지 프로퍼티는 '확인 필요'로만 언급), 캐시 설정 연계(XML 없이 `VetRepository.java:44-46`·`CacheConfiguration.java:32,36-38`, `findVets` 라는 메서드는 없음을 바로잡음), 코드 설명(`processFindForm` 분기 전부, 라인 범위 한 줄 어긋남). 약점: 캐시 답변 끝에 소스에 없는 일반 지식('EhCache, Caffeine 등')이 섞임. 스모크 합계 입력 약 9.4만 토큰(Titan 임베딩 141건은 첫 인덱스 생성 1회분).
+- (참고) 처음 시도했을 때는 모델 한도로 5건 모두 실패했다. 그때 기록: 시도했으나 모델 한도(`Too many tokens per day`)로 5건 모두 호출 직후 실패했다. 답변 없음, 판정 없음. 정답(소스 확인 완료): Vet `/vets.html`→vets/vetList·`/vets`→@ResponseBody Vets, `VetRepository.java:45,55` `@Cacheable("vets")` + `CacheConfiguration.java:31-38`(JCache, XML 없음), `processFindForm` 은 OwnerController.java:95~, telephone 영향 위치는 Owner.java:64-65·89·92-93·167, 템플릿 3개, schema.sql 3종, postgres data.sql. 한도가 풀리면 `scratchpad` 가 아니라 이 목록으로 다시 만들어 1회씩 실행한다.
+- 원래 계획:
+- 스모크 질문 5~8건(분류, 도표, 기능 목록, 검색, 영향도, 가드레일 경계)을 직접 정답을 확인해 만들고 측정. 되는 것·어색한 것·한계를 정직하게 기록.
+
+### 부록. 토큰 사용량 기록 (완료, 오프라인)
+- 목적: 한도 문제에서 "우리가 얼마나 썼는지"를 추정이 아니라 계산으로 말하기 위함. `src/usage.py` 신설, trace 로그의 `usage` 를 에이전트뿐 아니라 보조 모델(Haiku 분류·재작성·요약)과 임베딩까지 모델별 합계로 확장, 평가 결과 JSON 에 케이스별·라운드 합계(judge 포함)와 실행 전 추정치 출력. 가짜 모델로 그래프 안쪽 호출 집계와 임베딩 스레드 집계를 검증(단위 테스트 173개).
+- 한계: RAGAS 채점 호출은 제외. 실패(스로틀링)한 호출은 세지 않는다. 옛 결과 JSON·로그에는 보조 모델 토큰이 없다. 참고 기준선: 2차 평가 로그(에이전트 모델만) 18건 입력 약 29만·출력 약 2만 토큰(질문당 입력 약 1.6만).
+- 평가 운영 개선(5번, 완료, 오프라인): 러너에 `--dry-run`, `--budget`, `--rescore [--apply]` 추가, 일일 한도 오류 시 남은 케이스 중단(기존 결과 보존, judge 의 불필요한 30초 재시도 제거), 토큰 추정이 깨진 결과 파일 때문에 평가를 막지 않게 보강. `--rescore 2` 는 70% 기준에서 2차 결과의 모든 판정을 그대로 재현함을 확인(규칙·LLM 케이스). 단위 테스트 180개. 한계: judge 프롬프트·모델을 바꾼 경우와 17번은 다시 판정할 수 없다.
+- 다음(별도 승인 필요): 도구 출력 줄이기(`list_structure` 요약 모드, `search_code` 미리보기), 프롬프트 캐싱(한도 집계 방식 확인 후).
+
+### 9-5. 문서·테스트 정리 (예정, 약 40분)
+- README "다른 프로젝트 분석하기"(환경변수, 지원 범위, 한계), SERVICE.md 개발 범위, 두 번째 프로젝트 받는 방법.
